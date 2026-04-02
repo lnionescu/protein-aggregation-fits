@@ -271,7 +271,8 @@ def main():
     #===================== 
     # load normalized data
     #=====================
-    data_path = '/Users/nataliaionescu/Desktop/AB42_project/fits/pH_6.5/6.5_without_1.4.tsv' 
+    data_path = '/Users/nataliaionescu/Desktop/AB42_project/ph-7.5-normalized-data/data.tsv' 
+    df_with_header = pd.read_csv(data_path, sep='\t', header=None)   # keep header to extract m0
     df = pd.read_csv(data_path, sep = '\t', header=1)
     current_df = df
     x_actual_data = []
@@ -283,9 +284,9 @@ def main():
         x_actual_data.append(x_current[~np.isnan(x_current)])
         y_actual_data.append(y_current[~np.isnan(y_current)])
 
+    m0vals = [float(df_with_header.iloc[0,i*2].split(': ')[-1]) for i in range(len(current_df.columns) // 2)]
+    print(m0vals)
 
-    m0vals = [0.8, 0.8, 0.8, 1.1, 1.1, 1.1, 1.4, 1.4, 1.9, 1.9, 1.9, 2.5, 2.5, 2.5, 3.4, 3.4, 3.4, 4.5, 4.5, 4.5, 6.0, 6.0, 6.0]
-    # TODO read m0vals automatically from the file
 
 
     #===========================
@@ -295,7 +296,6 @@ def main():
     # model_type = 'primary-and-secondary-nucleation'
     # model_type = 'saturating-secondary-nucleation'
     # model_type = 'saturating-primary-and-secondary'
-    # model_type = 'saturating-all'
     model_type = 'custom'
 
     if model_type == 'primary-and-secondary-nucleation':
@@ -313,19 +313,12 @@ def main():
         fixed_params = {'kp': 1, 'km': 1e-4}
         initial_guesses = np.array([1, 2, 10, 1, 2, 10])
 
-    elif model_type == 'saturating-all':
-        free_params = ['kn', 'k2', 'KS']
-        fixed_params = {'km': 1e-10, 'kp': 1, 'n2': 0.14, 'nc': 0.01}
-        initial_guesses = np.array([1e-6, 0.01, np.mean(m0vals)])
 
     elif model_type == 'custom':
-        free_params = ['kn', 'k2', 'nc', 'KP']
-        fixed_params = {'km': 1e-10, 'kp': 1, 'n2': 1e-5}
-        initial_guesses = np.array([1, 1, 2, np.mean(m0vals)])
+        free_params = ['kn', 'k2', 'nc',  'n2', 'KS']
+        fixed_params = {'km': 1e-10, 'kp': 1}
+        initial_guesses = np.array([1e-2, 10, 1e-2, 2, np.mean(m0vals)])
 
-
-# fit KE from seeded data
-# initial slopes s0(m0) / s0(m*) = m* + ke / m0 + ke
 
 
 
@@ -376,7 +369,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
 
 
