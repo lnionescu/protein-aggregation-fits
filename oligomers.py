@@ -7,6 +7,47 @@ from scipy.integrate import solve_ivp
 from scipy.optimize import basinhopping
 import pandas as pd
 from scipy.interpolate import interp1d
+from abc import ABC, abstractmethod
+
+class OligomerModel(ABC):
+    # subclasses will be particular kinetic models, that need
+    # i) kinetic parameters
+    # ii) mass conservation constraint
+    # iii) ODEs
+
+    param_names: list[str] = []
+
+    def __init__(self, fixed_params: dict):
+        self.fixed = fixed_params    # global constants during fitting
+
+
+    @abstractmethod
+    def get_free_monomer(self, M: float, m0: float, free_params: dict) -> float:
+        pass
+
+    @abstractmethod
+    def odes(self, t: float, y: list, m0: float, free_params: dict) -> list:
+        pass
+
+    # simulation concrete method: do this on a grid and later interpolate to fit to the data because not all datasets may have the same time points
+    def simulate(self, m0: float, free_params: dict, tend: float = 200, n_grid: int = 1000):
+        y0 = [0.0, 0.0]
+        t_grid = np.linspace(0, tend, n_grid)
+        sol = solve_ivp(self.odes, (0,tend), y0, method='Rk45', t_eval=t_grid, rtol=1e-8, atol=1e-10, args=(m0, free_params))
+        M_norm = sol.y[0] / m0
+        return sol.t, M_norm
+
+    def get_half_time(t, M_norm):
+        for i in range(len(M_norm)-1):
+            if M_norm[i] <= 0.5 & M_norm[i+1] >= 0.5:
+                slope = (0.5 - M_norm[i]) / (M_norm[i+1] - M_norm[i])
+                t_half = t[i] + slope * (t[i+1] - t[i])
+                return t_half
+        return None
+
+
+
+
 
 def get_free_monomer(M, m0, Keq, n):
     # m from conservation of mass constraint
@@ -33,7 +74,7 @@ def odes(t, y, m0, kn, k2, kp, nc, n2, Keq, n):
 
     return [dM, dP]
 
-def simulate(m0, params, tend = 200,  n_grid = 1000):
+def simulate(m0, params, tend = 300,  n_grid = 1000):
     kn, k2, kp, nc, n2, Keq, n = params
     y0 =[0.0, 0.0]  # unseeded
     t_grid = np.linspace(0, tend, n_grid)
@@ -50,9 +91,9 @@ def get_half_time(t, M_norm):
             return half_time
 
 m0vals = np.array([1.1, 1.4, 1.9, 2.5, 3.4, 4.5, 6.0])   # same values we have in the data
-params = (1,  # kn
-          1,  # k2
-          1e-3,   # kp
+params = (0.1,  # kn
+          100,  # k2
+          1e-5,   # kp
           2.0,   #nc
           2.0,   # n2
           3e-3,   # Keq
@@ -63,11 +104,12 @@ for m0 in m0vals:
     t, M_norm = simulate(m0, params)
     half_times.append(get_half_time(t, M_norm))
 
+tend=200
 half_times = np.array(half_times)
 plt.scatter(np.log10(m0vals), np.log10(half_times))
 plt.xlabel('log10(m0)')
 plt.ylabel('log10(t_half)')
-#plt.show()
+plt.show()
 
 
 for m0 in m0vals:
@@ -77,11 +119,12 @@ for m0 in m0vals:
 plt.xlabel('Time (h)')
 plt.ylabel('Normalised fibril mass')
 plt.legend(fontsize=7)
-#plt.show()
+plt.show()
 
 # attempt fitting without an analytical solution
 data_path = '/Users/nataliaionescu/Desktop/AB42_project/fits/pH_6.5/6.5_without_1.4.tsv'
 df = pd.read_csv(data_path, sep='\t', header=1)
+df_with_header = pd.read_csv(data_path, sep='\t', header=None)
 x_actual_data=[]    # time
 y_actual_data=[]    # signal
 for i in range((len(df.columns) //2)):
@@ -90,7 +133,9 @@ for i in range((len(df.columns) //2)):
     x_actual_data.append(x[~np.isnan(x)])
     y_actual_data.append(y[~np.isnan(y)])
 
-m0vals_data = np.array([1.1, 1.1, 1.1, 1.4, 1.4, 1.9, 1.9, 1.9, 2.5, 2.5, 2.5, 3.4, 3.4, 3.4, 4.5, 4.5, 4.5, 6.0, 6.0, 6.0])
+m0vals_data = [float(df_with_header.iloc[0,i*2].split(': ')[-1]) for i in range(len(df.columns)//2)]
+print(m0vals_data)
+m0vals_data = np.array(m0vals_data)
 tend_data = max(x[-1] for x in x_actual_data) * 2   # simulate long enough
 n2 = 2.0
 nc = 2.0
@@ -141,8 +186,7 @@ print(fit.fun)
 
 # TODO add progres bar to basinhopping procedure
 # TODO add classes to easily change afterwards what oligomer model is being simulated/fit to
-
-
+# TODO maybe define params as a dictionary to also print out their names
 
 
 
