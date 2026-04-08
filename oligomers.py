@@ -33,160 +33,238 @@ class OligomerModel(ABC):
     def simulate(self, m0: float, free_params: dict, tend: float = 200, n_grid: int = 1000):
         y0 = [0.0, 0.0]
         t_grid = np.linspace(0, tend, n_grid)
-        sol = solve_ivp(self.odes, (0,tend), y0, method='Rk45', t_eval=t_grid, rtol=1e-8, atol=1e-10, args=(m0, free_params))
+        sol = solve_ivp(self.odes, (0,tend), y0, method='RK45', t_eval=t_grid, rtol=1e-8, atol=1e-10, args=(m0, free_params))
         M_norm = sol.y[0] / m0
         return sol.t, M_norm
 
-    def get_half_time(t, M_norm):
+    def get_half_time(self, t, M_norm):
         for i in range(len(M_norm)-1):
-            if M_norm[i] <= 0.5 & M_norm[i+1] >= 0.5:
+            if M_norm[i] <= 0.5 <=  M_norm[i+1]:
                 slope = (0.5 - M_norm[i]) / (M_norm[i+1] - M_norm[i])
                 t_half = t[i] + slope * (t[i+1] - t[i])
                 return t_half
         return None
 
+class OffPathwayFastEq(OligomerModel):
+    '''
+    off-pathway oligomers that equilibrate instantly + elongation, primary nucleation, secondary nucleaion of fibrils
+    '''
+    param_names = ['kn', 'k2', 'kp', 'Keq']
 
+    def get_free_monomer(self, M, m0, free_params: dict) -> float:
+        # m from conservation of mass constraint
+        # m + n * Keq * m**n + M = m0
+        Keq = free_params['Keq']
+        n = self.fixed['n']
+        if Keq == 0:
+            return max(m0-M, 0)
 
+        def constraint(m):
+            return m + n * Keq * m**n + M - m0
+        m_max = max(m0-M, 0.0)
+        if m_max <= 0:
+            return 0.0
+        return brentq(constraint, 0, m_max, xtol=1e-12)
 
+    def odes(self, t, y, m0, free_params):
+        M, P = y
+        kn = free_params['kn']
+        k2 = free_params['k2']
+        kp = free_params['kp']
+        nc = self.fixed['nc']
+        n2 = self.fixed['n2']
+        m = self.get_free_monomer(M, m0, free_params)
 
-def get_free_monomer(M, m0, Keq, n):
-    # m from conservation of mass constraint
-    # m + n * Keq * m**n + M = m0
-    if Keq == 0:
-        return max(m0 - M, 0)
+        dP = kn * m**nc + k2 * m**n2 * M
+        dM = 2 * kp * m * P
     
-    def equation(m):
-        return m + n * Keq * m**n + M - m0
-    m_max = max(m0-M, 0.0)
-    if m_max <=0:
-        return 0.0
-    return brentq(equation, 0, m_max, xtol=1e-12)
+        return [dM, dP]
+
+
+class OffPathwayDelayed(OligomerModel):
+    '''
+    off_pathway oligomers that equilibrate at some point during the initial plateau + elongation, primary nucleation, secondary nucleation of fibrils
+    '''
+
+    param_names = ['kn', 'k2', 'kp', 'Keq', 'kominus']
+
+    def get_free_monomer(self, M, m0, free_params: dict, S) -> float:
+        n = self.fixed['n']
+        return max(m0-n*S-M, 0)
+
+    def odes(self, t, y, m0, free_params):
+        M, P, S = y   # add oligomer dynamics as well
+        kn = free_params['kn']
+        k2 = free_params['k2']
+        kp = free_params['kp']
+        Keq = free_params['Keq']
+        kominus = free_params['kominus']
+        koplus = Keq * kominus
+        nc = self.fixed['nc']
+        n2 = self.fixed['n2']
+        n = self.fixed['n']
+
+        m = self.get_free_monomer(M, m0, free_params, S)
+
+        dS = koplus * m**n - kominus * S
+        dP = kn * m**nc + k2 * m**n2 * M
+        dM = 2 * kp * m * P
+
+        return [dM, dP, dS]
+
+    def simulate(self, m0, free_params, tend=200, n_grid=1000):
+        y0 = [0., 0., 0.]
+        t_grid = np.linspace(0, tend, n_grid)
+        sol = solve_ivp(self.odes, (0,tend), y0, method='RK45', t_eval=t_grid, rtol=1e-8, atol=1e-10, args=(m0, free_params))
+        M_norm = sol.y[0] / m0
+        S = sol.y[2]
+        return sol.t, M_norm, S
 
 
 
+class OligomerFitter:
+    def __init__(self, model: OligomerModel, x_data:list, y_data:list, m0vals: np.ndarray, niter: int = 10):
+        self.model = model
+        self.x_data = x_data
+        self.y_data = y_data
+        self.m0vals = m0vals
+        self.niter = niter
+        self.tend = max(x[-1] for x in x_data) * 1.5
 
-def odes(t, y, m0, kn, k2, kp, nc, n2, Keq, n):    
-    M, P = y
-    m = get_free_monomer(M, m0, Keq, n)
-
-    dP = kn * m**nc + k2 * m**n2 * M
-    dM = 2 * kp * m * P
-
-    return [dM, dP]
-
-def simulate(m0, params, tend = 300,  n_grid = 1000):
-    kn, k2, kp, nc, n2, Keq, n = params
-    y0 =[0.0, 0.0]  # unseeded
-    t_grid = np.linspace(0, tend, n_grid)
-    sol = solve_ivp(odes, (0,tend), y0, method='RK45', t_eval = t_grid, rtol=1e-8, atol=1e-10, args=(m0, kn, k2, kp, nc, n2, Keq, n))
-    M_norm = sol.y[0] / m0
-    return sol.t, M_norm
+    def basinhopping_callback(self, x, f, accept):
+        self.iter_count += 1
+        status = 'accpted' if accept else 'rejected'
+        print(f'iteration {self.iter_count}: {status}')
 
 
-def get_half_time(t, M_norm):
-    for i in range(len(M_norm) - 1):
-        if M_norm[i] <= 0.5 <= M_norm[i+1]:
-            slope = (0.5 - M_norm[i]) / (M_norm[i+1] - M_norm[i])
-            half_time = t[i] + slope * (t[i+1] - t[i])
-            return half_time
+    def log_params_to_dict(self, log_free_params: np.ndarray) -> dict:
+        return {name: 10**lp for name, lp in zip(self.model.param_names, log_free_params)}
 
-m0vals = np.array([1.1, 1.4, 1.9, 2.5, 3.4, 4.5, 6.0])   # same values we have in the data
-params = (0.1,  # kn
-          100,  # k2
-          1e-5,   # kp
-          2.0,   #nc
-          2.0,   # n2
-          3e-3,   # Keq
-          5     # n, oligomer size
-        )
-half_times = []
-for m0 in m0vals:
-    t, M_norm = simulate(m0, params)
-    half_times.append(get_half_time(t, M_norm))
+    def objective(self, log_free_params: np.ndarray) -> float:
+        # will search through log of parameter space for basinhopping to be more efficient
+        free_params = self.log_params_to_dict(log_free_params)
+        total_loss = 0.0
+        for x_data, y_data, m0 in zip(self.x_data, self.y_data, self.m0vals):
+            try:
+                t_sim, M_sim = self.model.simulate(m0, free_params, tend=self.tend, n_grid=300)
+                if not np.all(np.isfinite(M_sim)) or M_sim[-1] < 0.5:    # simulation explodes or doesn't plateau
+                    return 1e10    # huge loss, not valid fit 
+                interp = interp1d(t_sim, M_sim, bounds_error=False, fill_value=(0.0,1.0))
+                # interpolate between simulated values to match measured times
+                total_loss += np.sum((interp(x_data) - y_data)**2)
+            except Exception as e:
+                print(e)
+                return 1e10
+        return total_loss
 
-tend=200
-half_times = np.array(half_times)
-plt.scatter(np.log10(m0vals), np.log10(half_times))
-plt.xlabel('log10(m0)')
-plt.ylabel('log10(t_half)')
-plt.show()
+   
+    def fit(self, init_log_guess: list) -> dict:
+        self.iter_count = 0
+        print(f'running basinhopping with {self.niter} iterations')
+        result = basinhopping(self.objective, init_log_guess, niter=self.niter, callback = self.basinhopping_callback)
+        fitted_log = result.x
+        fitted = self.log_params_to_dict(fitted_log)
+        print(f'loss: {result.fun}')
+        print('fitted parameters:')
+        for k, v in fitted.items():    # dict
+            print(f'{k} is {v}')
+        return fitted, result
+
+if __name__ == '__main__':
+    #==============================================
+    # simulating kinetic curves of different models
+    #==============================================
+    fixed = dict(nc=2.0, n2=2.0, n=5)
+    model = OffPathwayFastEq(fixed)
+
+    free_params = dict(kn=1.0, k2=1.0, kp=1e-3, Keq=3e-3)
+    m0vals = np.array([1.1, 1.4, 1.9, 2.5, 3.4, 4.5, 6.0])
+
+    half_times = []
+    for m0 in m0vals:
+        t, M_norm = model.simulate(m0, free_params)
+        half_times.append(model.get_half_time(t, M_norm))
+
+    half_times = np.array(half_times)
+    plt.figure()
+    plt.scatter(np.log10(m0vals), np.log10(half_times))
+    plt.xlabel('log m0')
+    plt.ylabel('log t_half')
+
+    plt.figure()
+    for m0 in m0vals:
+        t, M_norm = model.simulate(m0, free_params)
+        plt.plot(t, M_norm, label=f'{m0}')
+    plt.xlabel('time (h)')
+    plt.ylabel('normalised fibril mass')
+    plt.legend()
+    plt.show()
+
+    delayed_eq_model = OffPathwayDelayed(dict(nc=2.0, n2=2.0, n=5))
+    free_params_delayed = dict(kn=1.0, k2=1.0, kp=1e-3, Keq=3e-3, kominus=0.5)
+
+    # plot fibril mass and oligomer concentration together
+    fig, axes = plt.subplots(1,2)
+    for m0 in m0vals:
+        t, M_norm, S = delayed_eq_model.simulate(m0, free_params_delayed)
+        axes[0].plot(t, M_norm, label=f'{m0}')
+        axes[1].plot(t, S, label=f'{m0}')
+    axes[0].set_xlabel('time (h)')
+    axes[1].set_xlabel('time(h)')
+    axes[0].set_ylabel('normalised fibril mass')
+    axes[1].set_ylabel('oligomer concentration')
+    axes[0].legend()
+    axes[1].legend()
+    plt.tight_layout()
+    plt.show()
+
+    #===============================================
+    # attempt fitting without an analytical solution
+    #===============================================
+    data_path = '/Users/nataliaionescu/Desktop/AB42_project/fits/pH_6.5/6.5_without_1.4.tsv'
+    df = pd.read_csv(data_path, sep='\t', header=1)
+    df_with_header = pd.read_csv(data_path, sep='\t', header=None)
+    x_actual_data=[]    # time
+    y_actual_data=[]    # signal
+    for i in range((len(df.columns) //2)):
+        x = df.iloc[:, i*2].values
+        y = df.iloc[:, i*2+1].values
+        x_actual_data.append(x[~np.isnan(x)])
+        y_actual_data.append(y[~np.isnan(y)])
+
+    m0vals_data = [float(df_with_header.iloc[0,i*2].split(': ')[-1]) for i in range(len(df.columns)//2)]
+    print(m0vals_data)
+    m0vals_data = np.array(m0vals_data)
+
+    fitter = OligomerFitter(model=OffPathwayFastEq(dict(nc=2.0,n2=2.0,n=5)),
+                            x_data = x_actual_data,
+                            y_data = y_actual_data,
+                            m0vals = m0vals_data,
+                            niter=10)
+
+    # initial guess in log space: kn, k2, kp, Keq
+    fitted_params, fit_result = fitter.fit([1,1,1,1])
 
 
-for m0 in m0vals:
-    t, M_norm = simulate(m0, params)
-    plt.plot(t, M_norm, label=f'{m0} µM')
+    m0_unique = sorted(set(m0vals_data))
+    palette = sns.color_palette('tab10', n_colors = len(m0_unique))
+    color_map = {m0: palette[i] for i, m0 in enumerate(m0_unique)}
+    for m0 in m0_unique:
+        color = color_map[m0]
+        indices = np.where(m0vals_data == m0)[0]
+        for i in indices:
+            x_data = x_actual_data[i]
+            y_data = y_actual_data[i]
+            plt.scatter(x_data, y_data,color=color)
+        t_sim, M_sim = model.simulate(m0, fitted_params, tend=50)
+        plt.plot(t_sim, M_sim, color=color, label=f'{m0}')
 
-plt.xlabel('Time (h)')
-plt.ylabel('Normalised fibril mass')
-plt.legend(fontsize=7)
-plt.show()
-
-# attempt fitting without an analytical solution
-data_path = '/Users/nataliaionescu/Desktop/AB42_project/fits/pH_6.5/6.5_without_1.4.tsv'
-df = pd.read_csv(data_path, sep='\t', header=1)
-df_with_header = pd.read_csv(data_path, sep='\t', header=None)
-x_actual_data=[]    # time
-y_actual_data=[]    # signal
-for i in range((len(df.columns) //2)):
-    x = df.iloc[:, i*2].values
-    y = df.iloc[:, i*2+1].values
-    x_actual_data.append(x[~np.isnan(x)])
-    y_actual_data.append(y[~np.isnan(y)])
-
-m0vals_data = [float(df_with_header.iloc[0,i*2].split(': ')[-1]) for i in range(len(df.columns)//2)]
-print(m0vals_data)
-m0vals_data = np.array(m0vals_data)
-tend_data = max(x[-1] for x in x_actual_data) * 2   # simulate long enough
-n2 = 2.0
-nc = 2.0
-n = 5   # keep these fixed
-
-def objective(log_free_params):
-    # will search through log of parameter space for basinhopping to be more efficient
-    kn, k2, kp, Keq = [10**logp for logp in log_free_params]
-    params = (kn, k2, kp, nc, n2, Keq, n)   # args for simulate()
-    total_loss = 0.0
-    for x_data, y_data, m0 in zip(x_actual_data, y_actual_data, m0vals_data):
-        try:
-            t_sim, M_sim = simulate(m0, params, tend=tend_data, n_grid=300)
-            if not np.all(np.isfinite(M_sim)) or M_sim[-1] < 0.5:    # simulation explodes or doesn't plateau
-                return 1e10    # huge loss, not valid fit 
-            interp = interp1d(t_sim, M_sim, bounds_error=False, fill_value=(0.0,1.0))
-            # interpolate between simulated values to match measured times
-            total_loss += np.sum((interp(x_data) - y_data)**2)
-        except Exception as e:
-            print(e)
-            return 1e10
-    return total_loss
-
-init_guess = [0.2, 0, 1, -3]   # log space: kn, k2, kp, Keq
-fit = basinhopping(objective,init_guess, niter=10)
-fitted_params = 10**(fit.x)
-
-m0_unique = sorted(set(m0vals_data))
-palette = sns.color_palette('tab10', n_colors = len(m0_unique))
-color_map = {m0: palette[i] for i, m0 in enumerate(m0_unique)}
-for m0 in m0_unique:
-    color = color_map[m0]
-    indices = np.where(m0vals_data == m0)[0]
-    for i in indices:
-        x_data = x_actual_data[i]
-        y_data = y_actual_data[i]
-        plt.scatter(x_data, y_data,color=color)
-    all_params_fit = (fitted_params[0], fitted_params[1], fitted_params[2], nc, n2, fitted_params[3], n)
-    t_sim, M_sim = simulate(m0, all_params_fit, tend=50)
-    plt.plot(t_sim, M_sim, color=color)
-    #plt.savefig('oligomer_fit.png')
-plt.xlim(0, tend_data)
-plt.show()
-
-print(fitted_params)
-print(fit.fun)
+    plt.xlim(0, fitter.tend)
+    plt.legend()
+    plt.show()
 
 
-# TODO add progres bar to basinhopping procedure
-# TODO add classes to easily change afterwards what oligomer model is being simulated/fit to
-# TODO maybe define params as a dictionary to also print out their names
+
 
 
 
