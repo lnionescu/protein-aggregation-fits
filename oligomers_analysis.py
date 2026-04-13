@@ -100,16 +100,16 @@ def fit_delayed_model(x_data, y_data, m0vals) -> dict:
     # create OligomerFitter from OffPathwayDelayed
     # basinhopping routine is handled inside OligomerMethods.py
     fitter = OligomerFitter(
-        model=OffPathwayDelayed(dict(nc=2.0, n2=2.0, n=10)),
+        model=OffPathwayDelayed(dict(nc=2.0, n2=2.0, kominus=1)),
         x_data=x_data,
         y_data=y_data,
         m0vals=m0vals,
         niter=10,
     )
-    # initial guesses in log space: kn, k2, kp, m_star, kominus
+    # initial guesses in log space: kn, k2, kp, m_star, n
     fitted_params, _ = fitter.fit([-1, 2, -5, 0, 1])    # LOG SPACE
     plot_fit(fitter, fitted_params, x_data, y_data, m0vals)
-    return fitted_params
+    return fitted_params, fitter
 
 
 
@@ -122,4 +122,5 @@ if __name__ == "__main__":
     plot_delayed_model()    # simulate: kinetic curves of M, S, m & half-time plot
     data_path = '/Users/nataliaionescu/Desktop/AB42_project/fits/pH_6.5/6.5_without_1.4.tsv'
     x_data, y_data, m0vals = load_data(data_path) 
-
+    fitted_params, fitter = fit_delayed_model(x_data, y_data, m0vals)
+    plot_fit(fitter, fitted_params, x_data, y_data, m0vals)
