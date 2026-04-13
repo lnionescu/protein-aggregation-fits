@@ -89,7 +89,7 @@ class OffPathwayDelayed(OligomerModel):
 
     def get_free_monomer(self, M, m0, free_params: dict, S) -> float:
         n = self.fixed['n']
-        return max(m0-n*S-M, 0)
+        return max(m0-M, 0)
 
     def odes(self, t, y, m0, free_params):
         M, P, S = y   # add oligomer dynamics as well
@@ -115,7 +115,7 @@ class OffPathwayDelayed(OligomerModel):
         t_grid = np.linspace(0, tend, n_grid)
         sol = solve_ivp(self.odes, (0,tend), y0, method='RK45', t_eval=t_grid, rtol=1e-8, atol=1e-10, args=(m0, free_params))
         M_norm = sol.y[0] / m0
-        S = sol.y[2]
+        S = sol.y[-1]
         return sol.t, M_norm, S
 
 
@@ -174,10 +174,14 @@ if __name__ == '__main__':
     #==============================================
     # simulating kinetic curves of different models
     #==============================================
-    fixed = dict(nc=2.0, n2=2.0, n=5)
+    
+    #===================================
+    # fast equilibration model simulation
+    #===================================
+    fixed = dict(nc=2.0, n2=2.0, n=3)
     model = OffPathwayFastEq(fixed)
 
-    free_params = dict(kn=1.0, k2=1.0, kp=1e-3, m_star=2.0)
+    free_params = dict(kn=1.0, k2=1.0, kp=1e-3, m_star=3.0)
     m0vals = np.array([1.1, 1.4, 1.9, 2.5, 3.4, 4.5, 6.0])
 
     half_times = []
@@ -201,8 +205,13 @@ if __name__ == '__main__':
     plt.legend()
     plt.show()
 
-    delayed_eq_model = OffPathwayDelayed(dict(nc=2.0, n2=2.0, n=5))
-    free_params_delayed = dict(kn=0.1, k2=100, kp=1e-5, m_star=2, kominus=0.5)
+    #======================================
+    # delayed equilibration model simulation
+    #======================================
+
+
+    delayed_eq_model = OffPathwayDelayed(dict(nc=2.0, n2=2.0, n=10))
+    free_params_delayed = dict(kn=0.1, k2=100, kp=1e-5, m_star=3, kominus=0.5)
 
     # plot fibril mass and oligomer concentration together
     fig, axes = plt.subplots(1,2)
@@ -253,13 +262,13 @@ if __name__ == '__main__':
     #==============================
     # fit to delayed oligomer model
     #==============================
-    fitter = OligomerFitter(model=OffPathwayDelayed(dict(nc=2.0,n2=2.0,n=5)),
+    fitter = OligomerFitter(model=OffPathwayDelayed(dict(nc=2.0,n2=2.0,n=10)),
                             x_data = x_actual_data,
                             y_data = y_actual_data,
                             m0vals = m0vals_data,
                             niter=10)
-    # initial guesses in log space: kn, k2, kp, Keq, kominus
-    fitted_params, fit_result = fitter.fit([-1, 2, -5, -3, -1])    # LOG SPACE!!!!
+    # initial guesses in log space: kn, k2, kp, m_star, kominus
+    fitted_params, fit_result = fitter.fit([-1, 2, -5, 0, 1])    # LOG SPACE!!!!
     m0_unique = sorted(set(m0vals_data))
     palette = sns.color_palette('tab10', n_colors = len(m0_unique))
     color_map = {m0: palette[i] for i, m0 in enumerate(m0_unique)}
@@ -290,8 +299,8 @@ if __name__ == '__main__':
                             m0vals = m0vals_data,
                             niter=10)
 
-    # initial guess in log space: kn, k2, kp, Keq
-    fitted_params, fit_result = fitter.fit([1,1,1,1])
+    # initial guess in log space: kn, k2, kp, m_star
+    fitted_params, fit_result = fitter.fit([1,1,1,0])
 
 
     m0_unique = sorted(set(m0vals_data))
@@ -304,7 +313,7 @@ if __name__ == '__main__':
             x_data = x_actual_data[i]
             y_data = y_actual_data[i]
             plt.scatter(x_data, y_data,color=color)
-        t_sim, M_sim = model.simulate(m0, fitted_params, tend=50)
+        t_sim, M_sim = fitter.model.simulate(m0, fitted_params, tend=50)
         plt.plot(t_sim, M_sim, color=color, label=f'{m0}')
 
     plt.xlim(0, fitter.tend)
