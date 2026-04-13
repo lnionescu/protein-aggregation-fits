@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats
+from scipy.optimize import curve_fit
 
 # extract early time slope from a single aggregation curve
 def get_early_slope(time, signal, threshold):
@@ -76,7 +77,7 @@ for m0 in unique_m0:
     mask = m0vals_arr == m0
     print('masked m0', m0vals_arr[mask])
     print('masked slopes', slopes[mask])
-    mean_slopes.append(slopes[mask].mean()) 
+    mean_slopes.append(slopes[mask].mean()*m0) 
 
 print('mean slopes', mean_slopes)
 
@@ -86,6 +87,25 @@ ax.scatter(unique_m0, mean_slopes)
 ax.set_xlabel('m0')
 ax.set_ylabel('mean early slope')
 plt.show()
+
+# fit KE
+def saturated_elongation(m0, A, KE):
+    return A * m0 / (1 + m0/KE)
+
+m0_arr = np.array(unique_m0)
+slope_arr = np.array(mean_slopes)
+
+# initial guesses
+A0 = slope_arr[-1] / m0_arr[-1]
+KE0 = m0_arr[-1]
+
+popt, pcov = curve_fit(saturated_elongation, m0_arr, slope_arr, p0=[A0, KE0], bounds=([0,0], [np.inf, np.inf]), maxfev=10000)
+A_fit, KE_fit = popt
+A_err, KE_err = np.sqrt(np.diag(pcov))
+print(f'KE = {KE_fit:.4f} +- {KE_err:.4f}')
+
+
+
 
 # if this were linear, it would mean elongation is not saturated
 # however, it looks very weird, can KE be fit from here?
