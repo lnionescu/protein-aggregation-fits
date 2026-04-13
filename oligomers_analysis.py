@@ -13,11 +13,14 @@ M0VALS = np.array([1.1, 1.4, 1.9, 2.5, 3.4, 4.5, 6.0])
 
 # simulate model without oligomer pre-equilibrium
 def plot_delayed_model(m0vals: np.ndarray = M0VALS) -> None:
-    model = OffPathwayDelayed(dict(nc=2.0, n2=2.0, kominus=1))
+    model = OffPathwayDelayed(dict(nc=2.0, n2=2.0, kominus=10))
     free_params = dict(kn=0.1, k2=100, kp=1e-5, m_star=2, n=15)
     # plot for various n and kominus values 
     # fit n and not kominus
 
+    m_star = free_params['m_star']
+    n = free_params['n']
+    kominus = model.fixed['kominus']
     # fibril mass and oligomer concentration side by side
     fig, axes = plt.subplots(1, 3)
     for m0 in m0vals:
@@ -35,6 +38,7 @@ def plot_delayed_model(m0vals: np.ndarray = M0VALS) -> None:
     axes[1].legend()
     axes[2].legend()
     plt.tight_layout()
+    plt.savefig(f'simulation_kominus={kominus}_n={n}')
     plt.show()
  
     # half-time scaling
@@ -49,6 +53,7 @@ def plot_delayed_model(m0vals: np.ndarray = M0VALS) -> None:
     plt.xlabel('log m0')
     plt.ylabel('log t_half')
     plt.title('Delayed oligomers half time plot')
+    plt.savefig(f'halftimes_kominus={kominus}_n={n}')
     plt.show()
 
 # load real data
@@ -107,20 +112,16 @@ def fit_delayed_model(x_data, y_data, m0vals) -> dict:
         niter=10,
     )
     # initial guesses in log space: kn, k2, kp, m_star, n
-    fitted_params, _ = fitter.fit([-1, 2, -5, 0, 1])    # LOG SPACE
+    fitted_params, _ = fitter.fit([-1, 2, -5, 0, 1])    # LOG SPACE !!!!!!!!!!!!
     plot_fit(fitter, fitted_params, x_data, y_data, m0vals)
-    return fitted_params, fitter
-
-
-
+    return fitted_params
 
 # TODO try numerical solution fitting for a few initial guesses
 # free params: m_star, initial guess around 3, and n, initial guess around 15
-
+# TODO maybe set n outside of log space and force it to be an integer during fitting? or maybe not?
 
 if __name__ == "__main__":
     plot_delayed_model()    # simulate: kinetic curves of M, S, m & half-time plot
     data_path = '/Users/nataliaionescu/Desktop/AB42_project/fits/pH_6.5/6.5_without_1.4.tsv'
     x_data, y_data, m0vals = load_data(data_path) 
-    fitted_params, fitter = fit_delayed_model(x_data, y_data, m0vals)
-    plot_fit(fitter, fitted_params, x_data, y_data, m0vals)
+    fitted_params = fit_delayed_model(x_data, y_data, m0vals)
