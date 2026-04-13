@@ -80,12 +80,12 @@ class OffPathwayDelayed(OligomerModel):
     '''
     off_pathway oligomers that equilibrate at some point during the initial plateau + elongation, primary nucleation, secondary nucleation of fibrils
     '''
-
-    param_names = ['kn', 'k2', 'kp', 'm_star', 'kominus']
+    # FREE PARAMS FOR SIMULATION AND MORE IMPORTANTLY FITTING
+    param_names = ['kn', 'k2', 'kp', 'm_star', 'n']
 
     def get_free_monomer(self, M, m0, free_params: dict, S) -> float:
-        n = self.fixed['n']
-        return max(m0-M, 0)
+        n = free_params['n']
+        return max(m0-n*S-M, 0)
 
     def odes(self, t, y, m0, free_params):
         M, P, S = y   # add oligomer dynamics as well
@@ -93,10 +93,10 @@ class OffPathwayDelayed(OligomerModel):
         k2 = free_params['k2']
         kp = free_params['kp']
         m_star = free_params['m_star']
-        kominus = free_params['kominus']
+        n = free_params['n']
+        kominus = self.fixed['kominus']
         nc = self.fixed['nc']
         n2 = self.fixed['n2']
-        n = self.fixed['n']
         koplus =  kominus / (n*m_star**(n-1))
         m = self.get_free_monomer(M, m0, free_params, S)
 
@@ -108,11 +108,14 @@ class OffPathwayDelayed(OligomerModel):
 
     def simulate(self, m0, free_params, tend=300, n_grid=1000):
         y0 = [0., 0., 0.]
+        n = free_params['n']
         t_grid = np.linspace(0, tend, n_grid)
         sol = solve_ivp(self.odes, (0,tend), y0, method='RK45', t_eval=t_grid, rtol=1e-8, atol=1e-10, args=(m0, free_params))
-        M_norm = sol.y[0] / m0
+        M = sol.y[0]
+        M_norm = M / m0
         S = sol.y[-1]
-        return sol.t, M_norm, S
+        free_m = m0 - M - n * S
+        return sol.t, M_norm, S, free_m
 
 
 
