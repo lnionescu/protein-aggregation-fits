@@ -3,8 +3,12 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+dpi = 300
 import seaborn as sns
 import pandas as pd
+
+print(np.log10(2))
+print(np.log10(5))
 
 from OligomerMethods import OffPathwayFastEq, OffPathwayDelayed, OligomerFitter
 
@@ -13,12 +17,12 @@ M0VALS = np.array([1.1, 1.4, 1.9, 2.5, 3.4, 4.5, 6.0])
 
 # simulate model without oligomer pre-equilibrium
 def plot_delayed_model(m0vals: np.ndarray = M0VALS) -> None:
-    model = OffPathwayDelayed(dict(nc=2.0, n2=2.0, kominus=10))
-    free_params = dict(kn=0.1, k2=100, kp=1e-5, m_star=2, n=15)
+    model = OffPathwayDelayed(dict(nc=2.0, n2=2.0, kominus=10, m_star=3))
+    free_params = dict(kn=5, k2=100, kp=1e-1, n=30)
     # plot for various n and kominus values 
     # fit n and not kominus
 
-    m_star = free_params['m_star']
+    m_star = model.fixed['m_star']
     n = free_params['n']
     kominus = model.fixed['kominus']
     # fibril mass and oligomer concentration side by side
@@ -38,8 +42,11 @@ def plot_delayed_model(m0vals: np.ndarray = M0VALS) -> None:
     axes[1].legend()
     axes[2].legend()
     plt.tight_layout()
-    plt.savefig(f'simulation_kominus={kominus}_n={n}')
+    plt.savefig(f'simulation_kominus={kominus}_n={n}.png', dpi=dpi)
     plt.show()
+    # max slope of kinetic curve / slope at half time depends only on elongation and 2 nucleation rates, not on 1 nucleation
+    # does the half time plot go flat because all steps are almost saturated?
+    # small differences in plateau height
  
     # half-time scaling
     half_times = []
@@ -53,7 +60,7 @@ def plot_delayed_model(m0vals: np.ndarray = M0VALS) -> None:
     plt.xlabel('log m0')
     plt.ylabel('log t_half')
     plt.title('Delayed oligomers half time plot')
-    plt.savefig(f'halftimes_kominus={kominus}_n={n}')
+    plt.savefig(f'halftimes_kominus={kominus}_n={n}.png', dpi=dpi)
     plt.show()
 
 # load real data
@@ -105,14 +112,13 @@ def fit_delayed_model(x_data, y_data, m0vals) -> dict:
     # create OligomerFitter from OffPathwayDelayed
     # basinhopping routine is handled inside OligomerMethods.py
     fitter = OligomerFitter(
-        model=OffPathwayDelayed(dict(nc=2.0, n2=2.0, kominus=1)),
+        model=OffPathwayDelayed(dict(nc=2.0, n2=2.0, kominus=10, m_star=300)),
         x_data=x_data,
         y_data=y_data,
-        m0vals=m0vals,
-        niter=10,
+        m0vals=m0vals
     )
-    # initial guesses in log space: kn, k2, kp, m_star, n
-    fitted_params, _ = fitter.fit([-1, 2, -5, 0, 1])    # LOG SPACE !!!!!!!!!!!!
+    # initial guesses in log space: kn, k2, kp, n
+    fitted_params, _ = fitter.fit([0.7, 1, -1, 1])    # LOG SPACE !!!!!!!!!!!!
     plot_fit(fitter, fitted_params, x_data, y_data, m0vals)
     return fitted_params
 
@@ -122,6 +128,6 @@ def fit_delayed_model(x_data, y_data, m0vals) -> dict:
 
 if __name__ == "__main__":
     plot_delayed_model()    # simulate: kinetic curves of M, S, m & half-time plot
-    data_path = '/Users/nataliaionescu/Desktop/AB42_project/fits/pH_6.5/6.5_without_1.4.tsv'
+    data_path = '/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-fits/ph_6.5_no_1.4_no_1.1.tsv' 
     x_data, y_data, m0vals = load_data(data_path) 
     fitted_params = fit_delayed_model(x_data, y_data, m0vals)
