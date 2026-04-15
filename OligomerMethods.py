@@ -81,7 +81,7 @@ class OffPathwayDelayed(OligomerModel):
     off_pathway oligomers that equilibrate at some point during the initial plateau + elongation, primary nucleation, secondary nucleation of fibrils
     '''
     # FREE PARAMS FOR SIMULATION AND MORE IMPORTANTLY FITTING
-    param_names = ['kn', 'k2', 'kp', 'm_star', 'n']
+    param_names = ['kn', 'k2', 'kp', 'n']
 
     def get_free_monomer(self, M, m0, free_params: dict, S) -> float:
         n = free_params['n']
@@ -92,7 +92,7 @@ class OffPathwayDelayed(OligomerModel):
         kn = free_params['kn']
         k2 = free_params['k2']
         kp = free_params['kp']
-        m_star = free_params['m_star']
+        m_star = self.fixed['m_star']
         n = free_params['n']
         kominus = self.fixed['kominus']
         nc = self.fixed['nc']
@@ -106,7 +106,7 @@ class OffPathwayDelayed(OligomerModel):
 
         return [dM, dP, dS]
 
-    def simulate(self, m0, free_params, tend=300, n_grid=1000):
+    def simulate(self, m0, free_params, tend=3, n_grid=1000):
         y0 = [0., 0., 0.]
         n = free_params['n']
         t_grid = np.linspace(0, tend, n_grid)
@@ -120,13 +120,13 @@ class OffPathwayDelayed(OligomerModel):
 
 
 class OligomerFitter:
-    def __init__(self, model: OligomerModel, x_data:list, y_data:list, m0vals: np.ndarray, niter: int = 10):
+    def __init__(self, model: OligomerModel, x_data:list, y_data:list, m0vals: np.ndarray, niter: int = 7):
         self.model = model
         self.x_data = x_data
         self.y_data = y_data
         self.m0vals = m0vals
         self.niter = niter
-        self.tend = max(x[-1] for x in x_data) * 1.5
+        self.tend = max(x[-1] for x in x_data)
 
     def basinhopping_callback(self, x, f, accept):
         self.iter_count += 1
