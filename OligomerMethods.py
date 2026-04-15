@@ -81,7 +81,7 @@ class OffPathwayDelayed(OligomerModel):
     off_pathway oligomers that equilibrate at some point during the initial plateau + elongation, primary nucleation, secondary nucleation of fibrils
     '''
     # FREE PARAMS FOR SIMULATION AND MORE IMPORTANTLY FITTING
-    param_names = ['kn', 'k2', 'kp', 'n']
+    param_names = ['kn', 'k2', 'kp']
 
     def get_free_monomer(self, M, m0, free_params: dict, S) -> float:
         n = free_params['n']
@@ -93,7 +93,7 @@ class OffPathwayDelayed(OligomerModel):
         k2 = free_params['k2']
         kp = free_params['kp']
         m_star = self.fixed['m_star']
-        n = free_params['n']
+        n = self.fixed['n']
         kominus = self.fixed['kominus']
         nc = self.fixed['nc']
         n2 = self.fixed['n2']
