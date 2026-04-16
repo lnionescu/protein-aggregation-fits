@@ -17,14 +17,14 @@ M0VALS = np.array([1.1, 1.4, 1.9, 2.5, 3.4, 4.5, 6.0])
 
 # simulate model without oligomer pre-equilibrium
 def plot_delayed_model(m0vals: np.ndarray = M0VALS) -> None:
-    model = OffPathwayDelayed(dict(nc=2.0, n2=2.0, kominus=10, m_star=3))
-    free_params = dict(kn=5, k2=100, kp=1e-1, n=30)
+    model = OffPathwayDelayed(dict(nc=2.0, n2=0, m_star=4, n=30, kp=1.0))
+    free_params = dict(kn=5, kominus=10)
     # plot for various n and kominus values 
     # fit n and not kominus
 
     m_star = model.fixed['m_star']
-    n = free_params['n']
-    kominus = model.fixed['kominus']
+    n = model.fixed['n']
+    kominus = free_params['kominus']
     # fibril mass and oligomer concentration side by side
     fig, axes = plt.subplots(1, 3)
     for m0 in m0vals:
@@ -112,13 +112,13 @@ def fit_delayed_model(x_data, y_data, m0vals) -> dict:
     # create OligomerFitter from OffPathwayDelayed
     # basinhopping routine is handled inside OligomerMethods.py
     fitter = OligomerFitter(
-        model=OffPathwayDelayed(dict(nc=2.0, n2=2.0, kominus=10, m_star=3)),
+        model=OffPathwayDelayed(dict(nc=2.0, n2=0.0, m_star=3, n=3, kp=1.0)),
         x_data=x_data,
         y_data=y_data,
         m0vals=m0vals
     )
-    # initial guesses in log space: kn, k2, kp, n
-    fitted_params, _ = fitter.fit([0.7, 1, -1, 1])    # LOG SPACE !!!!!!!!!!!!
+    # initial guesses in log space: kn, kominus
+    fitted_params, _ = fitter.fit([0, 0])    # LOG SPACE !!!!!!!!!!!!
     plot_fit(fitter, fitted_params, x_data, y_data, m0vals)
     return fitted_params
 
