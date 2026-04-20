@@ -3,7 +3,7 @@ from sklearn.decomposition import PCA
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-
+import seaborn as sns
 
 # read data
 # load real data
@@ -35,10 +35,43 @@ if __name__ == "__main__":
     t_axis = np.linspace(0, tend, 300)
     data_matrix = [np.interp(t, x, y) for t, x, y in zip([t_axis] * len(x_data), x_data, y_data)]
     data_matrix = np.array(data_matrix)
+    # somehow this data should acknowledge that triplicates share m0 and all curves share kinetic parameters
+    # and then fit how, to what and interpret how????/????
+
+    #=====
+    # PCA 
+    #=====
+
     pca = PCA()
     pca.fit(data_matrix)
+    scores = pca.fit_transform(data_matrix)
+    print(scores)
+
+    '''explained variance ratio by each principal component'''
     plt.plot(pca.explained_variance_ratio_.cumsum())
     plt.show()
+
     for i in range(3):
         plt.plot(t_axis, pca.components_[i], label=f'PC{i+1}')
     plt.show()
+
+    # project kinetic curves onto principal components
+    scores = pca.transform(data_matrix)
+    m0_unique = sorted(set(m0vals))
+    palette = sns.color_palette('tab10', n_colors=len(m0_unique))
+    color_map = {m0: palette[i] for i, m0 in enumerate(m0_unique)}
+
+    for m0 in m0_unique:
+        color = color_map[m0]
+        indices = np.where(m0vals == m0)[0]
+        for i in indices:
+            plt.scatter(scores[i,0], scores[i,1], color=color_map[m0], label=f'{m0}')
+            plt.xlabel('PC1')
+            plt.ylabel('PC2')
+    # remove triplicate labels in the legend
+    handles, labels = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    plt.legend(by_label.values(), by_label.keys())
+    plt.show()
+
+
