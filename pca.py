@@ -27,7 +27,8 @@ def load_data(data_path):
 
 
 if __name__ == "__main__":
-    data_path = '/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-fits/ph_6.5_no_1.4_no_1.1.tsv' 
+    data_path = '/Users/nataliaionescu/Downloads/pH-6.5-only-low-conc/ph-6.5-only-low-conc.tsv' 
+    #data_path = '/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-fits/ph_6.5_no_1.4_no_1.1.tsv' 
     # x_data times will not be the same for all m0 curves since i normalized it by hand and eliminated parts of it inconsistently
     # which is why we need to interpolate to get a data matrix 
     x_data, y_data, m0vals = load_data(data_path)
@@ -42,18 +43,25 @@ if __name__ == "__main__":
     # PCA 
     #=====
 
-    pca = PCA()
+    pca = PCA(n_components = 4)
     pca.fit(data_matrix)
-    scores = pca.fit_transform(data_matrix)
-    print(scores)
 
-    '''explained variance ratio by each principal component'''
-    plt.plot(pca.explained_variance_ratio_.cumsum())
+    '''scree plot: how much variance is explained by each component?'''
+    pc_values = np.arange(pca.n_components_) + 1
+    plt.plot(pc_values, pca.explained_variance_ratio_, 'o-', lw=2, color='blue')
+    plt.title('Scree plot')
+    plt.xlabel('Principal component #')
+    plt.ylabel('Variance explained')
     plt.show()
+    print('Explained variance by each PC:', pca.explained_variance_ratio_)
 
+    # PC vs time
     for i in range(3):
         plt.plot(t_axis, pca.components_[i], label=f'PC{i+1}')
+    plt.title('PC vs time')
+    plt.legend()
     plt.show()
+
 
     # project kinetic curves onto principal components
     scores = pca.transform(data_matrix)
@@ -72,6 +80,7 @@ if __name__ == "__main__":
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     plt.legend(by_label.values(), by_label.keys())
+    plt.title('Data projection onto PCs')
     plt.show()
 
 
