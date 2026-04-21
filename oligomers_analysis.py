@@ -10,7 +10,7 @@ import pandas as pd
 print(np.log10(2))
 print(np.log10(5))
 
-from OligomerMethods import OffPathwayFastEq, OffPathwayDelayed, OligomerFitter
+from OligomerMethods import OffPathwayFastEq, OffPathwayDelayed, OligomerFitter, PCAFitter
 
 # m0 vals to simulate
 M0VALS = np.array([1.1, 1.4, 1.9, 2.5, 3.4, 4.5, 6.0])
@@ -112,13 +112,33 @@ def fit_delayed_model(x_data, y_data, m0vals) -> dict:
     # create OligomerFitter from OffPathwayDelayed
     # basinhopping routine is handled inside OligomerMethods.py
     fitter = OligomerFitter(
-        model=OffPathwayDelayed(dict(nc=2.0, n2=0.0, m_star=3, n=3, kp=1.0)),
+        model=OffPathwayDelayed(dict(n2=0.0, m_star=3, n=30, kp=1.0)),
         x_data=x_data,
         y_data=y_data,
         m0vals=m0vals
     )
-    # initial guesses in log space: kn, kominus
-    fitted_params, _ = fitter.fit([0, 0])    # LOG SPACE !!!!!!!!!!!!
+    # initial guesses in log space:nc, kn, kominus
+    fitted_params, _ = fitter.fit([0, 0, -1])    # LOG SPACE !!!!!!!!!!!!
+    plot_fit(fitter, fitted_params, x_data, y_data, m0vals)
+    return fitted_params
+
+def fit_fasteq_model(x_data, y_data, m0vals) -> dict:
+    fitter = OligomerFitter(model=OffPathwayFastEq(dict(nc=2.0, n2=2.0, n=30, kp=1.0, m_star=2)),
+                            x_data=x_data,
+                            y_data=y_data,
+                            m0vals=m0vals)
+    # initial guesses in log space: kn
+    fitted_params, _ = fitter.fit([0])
+    plot_fit(fitter, fitted_params, x_data, y_data, m0vals)
+    return fitted_params
+
+def fit_pca(x_data, y_data, m0vals):
+    fitter = PCAFitter(model=OffPathwayDelayed(dict(n2=0.0, m_star=3.0, n=30, kp=1.0)),
+                       x_data = x_data,
+                       y_data = y_data,
+                       m0vals = m0vals)
+    # initial guesses in log space: nc, kn, kominus
+    fitted_params, _ = fitter.fit([0, 0, -1])
     plot_fit(fitter, fitted_params, x_data, y_data, m0vals)
     return fitted_params
 
@@ -127,7 +147,11 @@ def fit_delayed_model(x_data, y_data, m0vals) -> dict:
 # TODO maybe set n outside of log space and force it to be an integer during fitting? or maybe not?
 
 if __name__ == "__main__":
-    plot_delayed_model()    # simulate: kinetic curves of M, S, m & half-time plot
-    data_path = '/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-fits/ph_6.5_no_1.4_no_1.1.tsv' 
+    #plot_delayed_model()    # simulate: kinetic curves of M, S, m & half-time plot
+    data_path = '/Users/nataliaionescu/Downloads/pH-6.5-only-low-conc/ph-6.5-only-low-conc.tsv' 
+    #data_path = '/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-fits/ph_6.5_no_1.4_no_1.1.tsv' 
     x_data, y_data, m0vals = load_data(data_path) 
-    fitted_params = fit_delayed_model(x_data, y_data, m0vals)
+    #fitted_params = fit_delayed_model(x_data, y_data, m0vals)
+    #fitted_params = fit_fasteq_model(x_data, y_data, m0vals)
+    fitted_params = fit_pca(x_data, y_data, m0vals)
+
