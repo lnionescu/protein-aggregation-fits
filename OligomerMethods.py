@@ -88,8 +88,6 @@ class OffPathwayDelayed(OligomerModel):
         n = self.fixed['n']
         S = max(0, S)
         m = max(m0 - n*S - M, 0)
-        if m > 100:
-            print('large m :/')
         return m
 
 
@@ -208,12 +206,27 @@ class PCAFitter:
         return {name: 10**lp for name, lp in zip(self.model.param_names, log_free_params)}
 
     def objective(self, log_free_params: np.ndarray) -> float:
+        # basinhopping makes kominus assume huge values, which makes the ODE system very stiff, which then takes forever to simulate and numerical fitting becomes intractable since each initial guess takes several hours
+        # a temporary fix: force parameters to be within some reasonable bounds and return a huge error if they are not, so basinhopping can hopefully move on faster
+        # nc, kn, kominus bounds in log space
+        log_param_bounds = {'nc': (0.0, 1.5), 'kn':(-4, 4), 'kominus': (-3,3)}
+        for i, name in enumerate(self.model.param_names):
+            low, high = log_param_bounds[name]
+            if not (low <= log_free_params[i] <= high):
+                return 1e10
+
+
+
+
         t_axis = self.t_axis
         n_pc = self.n_pc
         if self.pca is None:
             self.data_pca_scores()
 
         free_params = self.log_params_to_dict(log_free_params)
+       
+        print('objective called with', free_params)
+
         sim_data_matrix = []
         for m0 in self.m0vals:
             try:
@@ -239,7 +252,8 @@ class PCAFitter:
     def fit(self, init_log_guess: list) -> dict:
         self.iter_count = 0
         print(f'running basinhopping with {self.niter} iterations')
-        result = basinhopping(self.objective, init_log_guess, niter=self.niter, callback = self.basinhopping_callback)
+        minimizer_kwargs = {'method': 'Nelder-Mead'}
+        result = basinhopping(self.objective, init_log_guess, niter=self.niter, callback = self.basinhopping_callback, minimizer_kwargs=minimizer_kwargs)
         fitted_log = result.x
         fitted = self.log_params_to_dict(fitted_log)
         print(f'loss: {result.fun}')
