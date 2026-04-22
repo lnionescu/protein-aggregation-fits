@@ -7,8 +7,6 @@ dpi = 300
 import seaborn as sns
 import pandas as pd
 
-print(np.log10(2))
-print(np.log10(5))
 
 from OligomerMethods import OffPathwayFastEq, OffPathwayDelayed, OligomerFitter, PCAFitter
 
@@ -104,8 +102,8 @@ def plot_fit(fitter: OligomerFitter, fitted_params: dict,
     plt.xlabel('time (h)')
     plt.ylabel('normalised fibril mass')
     plt.legend()
-    plt.show()
- 
+    plt.savefig('latest_fit_attempt.png')    # this will get overwritten all the time, so it is ONLY for temporary use    
+
 
 
 def fit_delayed_model(x_data, y_data, m0vals) -> dict:
@@ -133,12 +131,12 @@ def fit_fasteq_model(x_data, y_data, m0vals) -> dict:
     return fitted_params
 
 def fit_pca(x_data, y_data, m0vals):
-    fitter = PCAFitter(model=OffPathwayDelayed(dict(n2=0.0, m_star=3.0, n=30, kp=1.0)),
+    fitter = PCAFitter(model=OffPathwayDelayed(dict(n2=1e-5, m_star=2.0, n=10, kp=1.0)),
                        x_data = x_data,
                        y_data = y_data,
                        m0vals = m0vals)
     # initial guesses in log space: nc, kn, kominus
-    fitted_params, _ = fitter.fit([0, 0, -1])
+    fitted_params, _ = fitter.fit([np.log10(2), 0, 0])
     plot_fit(fitter, fitted_params, x_data, y_data, m0vals)
     return fitted_params
 
@@ -148,8 +146,8 @@ def fit_pca(x_data, y_data, m0vals):
 
 if __name__ == "__main__":
     #plot_delayed_model()    # simulate: kinetic curves of M, S, m & half-time plot
-    data_path = '/Users/nataliaionescu/Downloads/pH-6.5-only-low-conc/ph-6.5-only-low-conc.tsv' 
-    #data_path = '/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-fits/ph_6.5_no_1.4_no_1.1.tsv' 
+    #data_path = '/Users/nataliaionescu/Downloads/pH-6.5-only-low-conc/ph-6.5-only-low-conc.tsv' 
+    data_path = '/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-fits/ph_6.5_no_1.4_no_1.1.tsv' 
     x_data, y_data, m0vals = load_data(data_path) 
     #fitted_params = fit_delayed_model(x_data, y_data, m0vals)
     #fitted_params = fit_fasteq_model(x_data, y_data, m0vals)
