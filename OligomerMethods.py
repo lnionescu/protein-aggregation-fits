@@ -82,7 +82,8 @@ class OffPathwayDelayed(OligomerModel):
     off_pathway oligomers that equilibrate at some point during the initial plateau + elongation, primary nucleation, secondary nucleation of fibrils
     '''
     # FREE PARAMS FOR SIMULATION AND MORE IMPORTANTLY FITTING
-    param_names = ['nc','kn', 'kominus']
+    #param_names = ['nc','kn', 'kominus']
+    param_names = ['nc', 'kn', 'm_star']   # fitting mstar instead of kominus (only one of them should be fit)
 
     def get_free_monomer(self, M, m0, free_params: dict, S) -> float:
         n = self.fixed['n']
@@ -96,9 +97,11 @@ class OffPathwayDelayed(OligomerModel):
         kn = free_params['kn']
         k2 = 1000 * kn
         kp = self.fixed['kp']
-        m_star = self.fixed['m_star']
+        #m_star = self.fixed['m_star']
+        m_star = free_params['m_star']
         n = self.fixed['n']
-        kominus = free_params['kominus']
+        #kominus = free_params['kominus']
+        kominus = self.fixed['kominus']
         nc = free_params['nc']
         n2 = self.fixed['n2']
         koplus =  kominus / (n*m_star**(n-1))
@@ -120,6 +123,40 @@ class OffPathwayDelayed(OligomerModel):
         S = sol.y[-1]
         free_m = m0 - M - n * S
         return sol.t, M_norm, S, free_m
+
+class OnPathwayCMC(OligomerModel):
+    # kn, k2, n2 and m_star are free
+    param_names = ['kn', 'k2', 'n2', 'm_star']
+    def get_free_monomer(self, M, m0, free_params: dict):
+        m_star = free_params['m_star']
+        n = self.fixed['n']
+        m_max = m0-M
+        if m_max <= 0:
+            return 0
+        def constraint(m):
+            return m + n * (m/m_star)**(n-1)*m + M - m0
+        return brentq(constraint, 0.0, m_max, xtol = 1e-10)
+
+
+    def odes(self, t, y, m0, free_params):
+        M, P = y
+        kn = free_params['kn']
+        k2 = free_params['k2']
+        n2 = free_params['n2']
+        m_star = free_params['m_star']
+        kp = self.fixed['kp']
+        nc = self.fixed['nc']
+
+        m = self.get_free_monomer(M, m0, free_params)
+        # saturating term: effective scaling with m0
+        m_eff = (m * m_star) / (m + m_star)
+        dP = kn * m_eff**nc + k2 * m_eff**n2 * M
+        dM = 2 * kp * P
+        return [dM, dP]
+
+
+
+
 
 
 
@@ -196,8 +233,14 @@ class PCAFitter:
         n_pc = self.n_pc
         data_matrix = [np.interp(t_axis, x, y) for x, y in zip(self.x_data, self.y_data)]
         data_matrix = np.array(data_matrix)
+        self.data_mean = data_matrix.mean(axis=0)
+        centered = data_matrix - self.data_mean
+
+        #data_matrix = np.array(data_matrix)
+        #data_matrix = np.array(centered)
         pca = PCA()
-        pca.fit(data_matrix)
+        #pca.fit(data_matrix)
+        pca.fit(centered)
         self.pca = pca
         self.data_scores = pca.transform(data_matrix)
         self.weights = np.sqrt(pca.explained_variance_[:n_pc])
@@ -209,7 +252,7 @@ class PCAFitter:
         # basinhopping makes kominus assume huge values, which makes the ODE system very stiff, which then takes forever to simulate and numerical fitting becomes intractable since each initial guess takes several hours
         # a temporary fix: force parameters to be within some reasonable bounds and return a huge error if they are not, so basinhopping can hopefully move on faster
         # nc, kn, kominus bounds in log space
-        log_param_bounds = {'nc': (0.0, 1.5), 'kn':(-4, 4), 'kominus': (-3,3)}
+        log_param_bounds = {'nc': (0.0, 1.5), 'kn':(-4, 4), 'm_star': (-3,3)}
         for i, name in enumerate(self.model.param_names):
             low, high = log_param_bounds[name]
             if not (low <= log_free_params[i] <= high):
@@ -240,7 +283,10 @@ class PCAFitter:
                 print(e)
                 return 1e10
         sim_data_matrix = np.array(sim_data_matrix)
-        sim_scores = self.pca.transform(sim_data_matrix)
+        self.sim_mean = sim_data_matrix.mean(axis=0)
+        sim_centered = sim_data_matrix - self.sim_mean
+        sim_scores = self.pca.transform(sim_centered)
+        #sim_scores = self.pca.transform(sim_data_matrix)
         # compare PCA scores of entire data matrix from simulation vs actual data matrix; the difference must be weighted by the relative importance of the PCs in describing the data
         sim_reconstructed = self.pca.inverse_transform(sim_scores)
         data_reconstructed = self.pca.inverse_transform(self.data_scores)
