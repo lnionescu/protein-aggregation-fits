@@ -8,7 +8,7 @@ import seaborn as sns
 import pandas as pd
 
 
-from OligomerMethods import OffPathwayFastEq, OffPathwayDelayed, OligomerFitter, PCAFitter
+from OligomerMethods import OffPathwayFastEq, OffPathwayDelayed, OnPathwayCMC, OligomerFitter, PCAFitter
 
 # m0 vals to simulate
 M0VALS = np.array([1.1, 1.4, 1.9, 2.5, 3.4, 4.5, 6.0])
@@ -99,6 +99,7 @@ def plot_fit(fitter: OligomerFitter, fitted_params: dict,
         plt.plot(t_sim, M_sim, color=color, label=f'{m0}')
  
     plt.xlim(0, fitter.tend)
+    plt.ylim(0, 1.2)
     plt.xlabel('time (h)')
     plt.ylabel('normalised fibril mass')
     plt.legend()
@@ -131,14 +132,26 @@ def fit_fasteq_model(x_data, y_data, m0vals) -> dict:
     return fitted_params
 
 def fit_pca(x_data, y_data, m0vals):
-    fitter = PCAFitter(model=OffPathwayDelayed(dict(n2=1e-5, m_star=2.0, n=10, kp=1.0)),
+    fitter = PCAFitter(model=OffPathwayDelayed(dict(n2=0.0, kominus=1.0, n=30, kp=1.0)),
                        x_data = x_data,
                        y_data = y_data,
                        m0vals = m0vals)
-    # initial guesses in log space: nc, kn, kominus
-    fitted_params, _ = fitter.fit([np.log10(2), 0, 0])
+    # initial guesses in log space: nc, kn, m_star
+    fitted_params, _ = fitter.fit([np.log10(2), 0, np.log10(2)])
     plot_fit(fitter, fitted_params, x_data, y_data, m0vals)
     return fitted_params
+
+def fit_on_pathway(x_data, y_data, m0vals):
+    fitter = OligomerFitter(model=OnPathwayCMC(dict(kp=1, nc=0,n2=0,n=10, m_star=2)),
+                            x_data = x_data,
+                            y_data = y_data,
+                            m0vals = m0vals)
+    # initial guesses in log space: kn, k2, KM
+    fitted_params, _ = fitter.fit([0, 10, -5])
+    plot_fit(fitter, fitted_params, x_data, y_data, m0vals)
+    return fitted_params
+
+
 
 # TODO try numerical solution fitting for a few initial guesses
 # free params: m_star, initial guess around 3, and n, initial guess around 15
@@ -151,5 +164,8 @@ if __name__ == "__main__":
     x_data, y_data, m0vals = load_data(data_path) 
     #fitted_params = fit_delayed_model(x_data, y_data, m0vals)
     #fitted_params = fit_fasteq_model(x_data, y_data, m0vals)
-    fitted_params = fit_pca(x_data, y_data, m0vals)
+    #fitted_params = fit_pca(x_data, y_data, m0vals)
+    fitted_params = fit_on_pathway(x_data, y_data, m0vals)
+
+
 
