@@ -6,43 +6,19 @@ import seaborn as sns
 from dataclasses import dataclass
 from scipy.optimize import brentq
 
-'''
-fitting constraints:
-    1. eps, kappa and c are fit per curve for m0 < m*, but shared for all m0 > m*
-    2. the regime switch aboe/below m* is currently a sharp transition
-'''
-
-#@dataclass
-#class KineticParameters:
-    #eps0: float    # constant in front of eps sclaing with m0
-    #alpha: float   # how eps scales with m0
-    #kappa0: float    # constant in front of kappa sclaing with m0
-    #beta: float    # how kappa scales with m0
-    #c0: float     # constant in front of c scaling with m0
-    #gamma: float    # how c scales with m0
-    #m_star: float     # either fit or fix to e.g. the median of the m0 values
-    #n: float
-    #m_star_c: float   # let the c parameter saturate earlier
-
-#@dataclass
-#class KineticParameters:
-    #kappa_low: float   # below m*
-    #kappa_high: float  # above m*
-    #eps_high: float    # eps above m*, below its 0
-    #c0: float    # c scale
-    #gamma: float   # exponent of c power law
-    #m_star: float   # fixed at 3
-
 @dataclass
 class KineticParameters:
     eps0: float
-    alpha: float
+    alpha: float   # scaling of eps with m0
     kappa0: float
-    beta: float
+    beta: float    # scaling of kappa with m0
     c_low: float
-    c_high: float
-    m_star: float 
-    n: int
+    m_star: float
+    n: float   # not actually used but still
+    c_high: float = None   # to handle the single c case, where it gets overwirtten after fitting
+'''
+if we want c_low = c_high, constrain that locally when the model is called, no need for a separate data class or model definition
+'''
 
 
 
@@ -53,6 +29,10 @@ def minimize(guess, x_actual, y_actual, m0vals, init_guesses, free_params, fixed
     fixed_params = dictionary of parameters that stay constant and their respective values
     '''
     fitted = {name: np.exp(guess[i]) * init_guesses[i] for i, name in enumerate(free_params)}
+    #fitted = {name: np.sinh(guess[i]) * init_guesses[i] for i, name in enumerate(free_params)}
+    #fitted = {name: np.sign(guess[i]) * np.exp(np.abs(guess[i])) * init_guesses[i] 
+          #for i, name in enumerate(free_params)}
+    # allow fitter to go negative on all parameters
 
     # collect parameters of both types
     all_params = {**fixed_params, **fitted}
@@ -62,11 +42,21 @@ def minimize(guess, x_actual, y_actual, m0vals, init_guesses, free_params, fixed
        y_model = model(x_actual[i], m0vals[i], params)
        residual += np.sum((y_actual[i] - y_model) ** 2)
 
+    # for the sigmoid to not be flat, add some bounds to the c values
+    c_min, c_max = 0.05, 5.0
+    for name in ['c_low', 'c_high']:
+        if name in fitted:
+            c = fitted[name]
+            if c <= c_min or c >= c_max:
+                residual += 1e6   # don't let c overcome boundaries ever
+            else:
+                residual -= 0.01 * (np.log(c-c_min) + np.log(c_max-c)) 
+                # also penalize c approaching the boundaries too much but allow it to get close if need be
+
+
+
     return residual
 
-'''
-first define the model such that eps, kappa and c are shared across all m0 values, then layer the m0 > m* / m0 < m* logic on top of that
-'''
 def richards_curve(t, eps, c, kappa):
     bracket = 1 + eps / c * (np.exp(kappa*t) + np.exp(-kappa*t) - 2)
     return 1 - bracket**(-c)    # M(t) / m0, normalised kinetic curve
@@ -74,16 +64,13 @@ def richards_curve(t, eps, c, kappa):
 def model(t, m0, params: KineticParameters):
 
     m0_eff = np.minimum(m0, params.m_star)
-    #m0_eff = m0
     eps = params.eps0 * m0_eff**params.alpha
     kappa = params.kappa0 * m0_eff**params.beta
-    if m0 < params.m_star:
-        c = params.c_low
-    if m0 >= params.m_star:
-        c = params.c_high
-
+    c = params.c_low if m0 < params.m_star else (params.c_high or params.c_low)
+    # to handle single c case: if c_high is None, use c_low (c_high gets written as c_low after fitting is complete)
 
     return richards_curve(t, eps, c, kappa)
+
 
 def load_data(data_path):
     df = pd.read_csv(data_path, sep='\t', header=1)
@@ -107,35 +94,57 @@ def load_data(data_path):
 
 
 if __name__ == "__main__":
-    data_path = '/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-fits/ph_6.5_no_1.4_no_1.1.tsv' 
+    #data_path = '/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-fits/pH6_without_a_1.4_curve_.tsv' 
+    #data_path = '/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-fits/ph_6.5_no_1.4_no_1.1.tsv' 
+    #data_path = '/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-fits/pH_6_normalized.tsv' 
+    data_path = '/Users/nataliaionescu/Desktop/AB42_project/normalized-data/pH_6_proper_norm.tsv' 
     x_data, y_data, m0vals = load_data(data_path)
+   
+    # filter out the m0=0.8 curves since they overlap a lot with the m0=1.1 curves and the optimizer gets confused
+    mask = m0vals != 0.8
+    x_data = [x for x, m in zip(x_data, m0vals) if m != 0.8]
+    y_data = [y for y, m in zip(y_data, m0vals) if m != 0.8]
+    m0vals = m0vals[mask]
+
+    # also filter out the third m0=1.4 curve because it annoys me how it overlaps with the 1.1 one
+    drop_idx = np.where(m0vals == 1.4)[0][2]
+    keep = np.arange(len(m0vals)) != drop_idx
+    x_data = [x for x, k in zip(x_data, keep) if k]
+    y_data = [y for y, k in zip(y_data, keep) if k]
+    m0vals = m0vals[keep]
+
     
+
+
+
     #========
     # FITTING
     #========
-    '''move this to a function later if it gets too long'''
-    free_params = ['eps0', 'kappa0',  'alpha', 'beta', 'c_low', 'c_high', 'm_star']
-    fixed_params = {'n': 10}
-    
-    # initial guesses eps0, kappa0, alpha, beta, c_low, c_high, m_star
-    initial_guesses = [1e-5, 1, 1, 1, 1, 1, 3]
+   
+    # decide if we use a c all across the m0 range or two c's, one above m_star and one below
+    SPLIT_C = False
 
-    #best_fit_guess = {'eps0': 1.8e-5,  'kappa0': 15, 'c0': 0.35, 'gamma': 0.78}
-    
-    #x0 = [np.log(best_fit_guess[name] / initial_guesses[i]) for i, name in enumerate(free_params)]
+    free_params = ['eps0', 'kappa0', 'alpha', 'beta', 'c_low']
+    #initial_guesses = [1e-5, 100, 2, 1, 0.2]
+    initial_guesses = [1, 1, 1, 1, 1]
+    fixed_params = {'n': 10, 'm_star': 2.5}
 
-    #free_params = ['kappa_low', 'kappa_high', 'eps_high', 'c0', 'gamma']
-    #initial_guesses = [20, 11, 0.01, 0.25, 1.0]
-    #fixed_params = {'m_star': 3}
+    if SPLIT_C:
+        free_params.append('c_high')
+        initial_guesses.append(0.5)
 
 
     seed = 42
-    res = basinhopping(minimize, np.zeros(len(initial_guesses), dtype=float), niter=50, stepsize=0.5, seed=seed, minimizer_kwargs={'method': 'Nelder-Mead', 'tol': 1e-10, 'args': (x_data, y_data, m0vals, initial_guesses, free_params, fixed_params)})
+    res = basinhopping(minimize, np.zeros(len(initial_guesses), dtype=float), niter=100, stepsize=0.3, seed=seed, minimizer_kwargs={'method': 'Nelder-Mead', 'tol': 1e-10, 'args': (x_data, y_data, m0vals, initial_guesses, free_params, fixed_params)})
     fitted_values = {name: initial_guesses[i] * np.exp(res.x[i]) for i, name in enumerate(free_params)}
     print('fitted values', fitted_values)
     total_data_points = sum(len(y) for y in y_data)
     print('residual', res.fun)
     print('mean residual error', res.fun / total_data_points)
+
+    # after fitting: if SPLIT_C was false, set c_high to the fitted value of c_low
+    if not SPLIT_C:
+        fitted_values['c_high'] = fitted_values['c_low']
 
 
     # Plot data and fitted curves
@@ -148,6 +157,10 @@ if __name__ == "__main__":
     # merge fixed parameters and fitted values of free parameters in the data class
     all_params = {**fixed_params, **fitted_values}
     params_fit = KineticParameters(**all_params) 
+
+
+    # PLOTTING FIT
+
 
 
     fig = plt.figure(figsize=(10,7))
@@ -165,7 +178,7 @@ if __name__ == "__main__":
 
         y_fit = model(x, m0vals[i], params_fit)
         ax1.plot(x, y_fit, color=color, linewidth=2)
-        ax1.scatter(x, y, s=35, color=color, alpha=0.5, linewidth=0, label=data_label)
+        ax1.scatter(x, y, s=35, color=color, alpha=0.7, linewidth=0, label=data_label)
     plt.xlabel('Time (h)', fontsize=15)
     plt.ylabel('Normalised fibril mass', fontsize=15)
     plt.legend()
@@ -173,26 +186,5 @@ if __name__ == "__main__":
 
 
 
-# compare half times of the model to the half times of the data
-fig2, ax = plt.subplots(figsize=(8, 5))
-half_times_data, half_times_model = [], []
-for i in range(len(x_data)):
-    x, y = x_data[i], y_data[i]
-    # interpolate to find t where M(t)/m0 = 0.5
-    from scipy.interpolate import interp1d
-    try:
-        t_half_data = interp1d(y, x)(0.5)
-        t_half_model = brentq(lambda t: model(t, m0vals[i], params_fit) - 0.5, x[0], x[-1])
-        half_times_data.append(t_half_data)
-        half_times_model.append(t_half_model)
-    except:
-        half_times_data.append(np.nan)
-        half_times_model.append(np.nan)
-
-ax.scatter(m0vals, half_times_data, label='data t½', zorder=5)
-ax.plot(m0vals, half_times_model, label='model t½', linewidth=2)
-ax.set_xlabel('m₀'); ax.set_ylabel('half-time')
-ax.legend()
-plt.show()
 
 
