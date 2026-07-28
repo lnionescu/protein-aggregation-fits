@@ -1,0 +1,11 @@
+m0 = 5
+  7 n = 3  # oligomer size
+  8 kp = 1   # this will always be 1
+  9 k1 = 0.1
+ 10 k2 = 1
+ 11 nc = 2
+ 12 n2 = 0
+ 13 nk = 2   # exponent in oligomer formation from monomers
+ 14 ko_plus = 1   # oligomer formation
+ 15 ko_minus = 50  # oligomer dissociation
+ 16 alphaminus = ko_minus
