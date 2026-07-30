@@ -14,7 +14,7 @@ nc = 2
 n2 = 0
 nk = 100   # exponent in oligomer formation from monomers
 #ko_plus = 10   # oligomer formation
-ko_minus = 5  # oligomer dissociation
+ko_minus = 100  # oligomer dissociation
 alphaminus = ko_minus
 m_star = 3   # set this to compute alphaplus directly from m_star, nk and alphaminus
 ko_plus = ko_minus * m_star**(1-nk)
@@ -43,14 +43,10 @@ def kappa(m0):
 
 
 def qss_free_monomer(m0_val, m_star_val, nk_val, n_val):
-    """Solve QSS polynomial for initial free monomer concentration.
-
-    Exact QSS condition (dS/dt = 0, mass conservation):
-        m_free + n * m_star^(1-nk) * m_free^nk = m0
-
-    Returns m_free_qss (dimensional).  For nk -> inf this converges to m_star
-    (the large-nk / CMC approximation used previously).
-    """
+    '''
+    For a fairer comparison between analytical and numerical solutions, we solve the initial cond    ition on the free monomer explicitly (in the closed-form solution, this is hidden away inside    the combined chi).
+    m_free + n * m_star^(1-nk) * m_free^nk = 0
+    '''
     if m0_val <= m_star_val:
         return m0_val   # below CMC: all protein as free monomer, no oligomers
     prefactor = n_val * m_star_val ** (1 - nk_val)   # = n * ko_plus / ko_minus
@@ -94,6 +90,8 @@ print('Gamma is', Gamma)
 m_free_qss = qss_free_monomer(m0, m_star, nk, n)
 S0 = (m0 - m_free_qss) / n
 # large-nk CMC approximation (previous):  S0 = (m0 - m_star) / n
+#S0 = (m0 - m_star) / n
+
 
 y0 = [0, 0, S0]   # change ICs
 sol = solve_ivp(rhs_dim, (0, tend), y0, method='Radau', t_eval=t_grid)
@@ -275,9 +273,9 @@ if __name__ == '__main__':
         m0vals = m0vals[keep]
 
     # free and fixed params
-    free_params = ['k1', 'k2', 'ko_minus']
-    initial_guesses = [1, 1, 1, 2]
-    fixed_params = {'n': 100, 'nk': 100, 'kp': 1, 'm_star': 3, 'n2': 0, 'nc': 2}
+    free_params = ['k2', 'ko_minus']
+    initial_guesses = [1, 1]
+    fixed_params = {'n': 100, 'nk': 100, 'kp': 1, 'm_star': 2.5, 'n2': 0, 'nc': 2, 'k1': 1e-3}
 
     seed = 42
     res = basinhopping(
@@ -326,3 +324,29 @@ if __name__ == '__main__':
     plt.ylabel('Normalised fibril mass', fontsize=15)
     plt.legend()
     plt.show()
+
+
+
+
+# checking k1 identifiability issue
+
+k1_scan = np.logspace(-6, 6, 30)   # push well past your previous floor
+residuals = []
+for k1_fixed in k1_scan:
+    best = np.inf
+    for seed in [1, 2, 3]:                      # multiple seeds/restarts
+        free_params = ['k2', 'ko_minus']
+        initial_guesses = [0.1, 1]
+        fixed_params = {'n': 100, 'nk': 100, 'kp': 1, 'm_star': 2.5,
+                         'n2': 0, 'nc': 2, 'k1': k1_fixed}
+        res = basinhopping(minimize_analytical, np.zeros(2), niter=100, stepsize=0.3, seed=seed,
+                            minimizer_kwargs={'method': 'Nelder-Mead', 'tol': 1e-10,
+                                               'args': (x_data, y_data, m0vals, initial_guesses,
+                                                        free_params, fixed_params)})
+        best = min(best, res.fun)
+    residuals.append(best)
+
+plt.semilogx(k1_scan, residuals)
+plt.xlabel('Fixed k1 value')
+plt.ylabel('Residual')
+plt.show()
