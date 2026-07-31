@@ -8,7 +8,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.optimize import basinhopping, brentq
-from dataclass import dataclass
+from dataclasses import dataclass
+import sys
 
 def qss_free_monomer(m0_val, m_star_val, nk_val, n_val):
     '''
@@ -118,6 +119,8 @@ def mean_residual_error(y_actual_list, y_model_list):
 #=================================
 # UGLY BORING DATA LOAD AND CLEANUP
 #=================================
+
+sys.path.append('/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-fits')
 from richards import load_data     # my trusted function
 data_path = '/Users/nataliaionescu/Desktop/AB42_project/normalized-data/pH_6_proper_norm.tsv'
 case = 'pH_6_old'
@@ -138,8 +141,77 @@ if case == 'pH_6_old':
 # MAIN TWO-STAGE FIT
 #==================
 if __name__ == '__main__':
+    # parameters that are fixed throughout both stages of the fit
+    fixed_params_common = {'n': 100, 'nk': 100, 'kp': 1, 'm_star': 2.5, 'n2': 0, 'nc': 2}
 
+    #================================================
+    # FIT K1, K2 ON EARLY-TIME DATA ONLY, C = 1 FIXED
+    #================================================
 
+    cutoff = 0.5
+    c_fixed = 1.0
+
+    free_params_early = ['k1', 'k2']
+    init_guesses_early = [1, 1]
+    fixed_params_early = dict(fixed_params_common)
+
+    res_early = basinhopping(minimize_early, np.zeros(len(init_guesses_early)), niter=100, stepsize=0.3, seed=42, minimizer_kwargs={'method': 'Nelder-Mead', 'tol': 1e-10, 'args': (x_data, y_data, m0vals, init_guesses_early, free_params_early, fixed_params_early, c_fixed, cutoff)})
+    fitted_early = {name: init_guesses_early[i] * np.exp(res_early.x[i]) for i, name in enumerate(free_params_early)}
+    k1_fit = fitted_early['k1']
+    k2_fit = fitted_early['k2']
+    print('early time fitted k1: ', k1_fit)
+    print('early time fitted k2: ', k2_fit)
+
+    #===============================================================
+    # FIT KO_MINUS ON THE FULL DATA, WITH K1 AND K2 FIXED FROM ABOVE
+    #===============================================================
+    free_params_all = ['ko_minus']
+    init_guesses_all = [5.0]
+    fixed_params_all = {**fixed_params_common, 'k1': k1_fit, 'k2': k2_fit}
+
+    res_all = basinhopping(minimize_all, np.zeros(len(init_guesses_all)), niter=100, stepsize=0.3, seed=42, minimizer_kwargs = {'method': 'Nelder-Mead', 'tol': 1e-10, 'args': (x_data, y_data, m0vals, init_guesses_all, free_params_all, fixed_params_all)})
+    ko_minus_fit = init_guesses_all[0] * np.exp(res_all.x[0])
+    print('fitted ko_minus on complete curves: ', ko_minus_fit)
+
+    # calculate total MRE obtained with this method
+    params_fit = KineticParameters(**{**fixed_params_common, 'k1': k1_fit, 'k2': k2_fit, 'ko_minus': ko_minus_fit})
+    y_model = [model_analytical(x, m0, params_fit) for x, m0 in zip(x_data, m0vals)]
+    mre = mean_residual_error(y_data, y_model)
+    print('MRE is: ', mre)
+
+    #=========================================
+    # CROSS-CHECK KO_MINUS FROM LATE TIME DATA
+    #=========================================
+    for x, y, m0 in zip(x_data, y_data, m0vals):
+        ko_minus_estimate = extract_ko_minus(x, y)
+        print('estimated ko_minus from late time data: ', ko_minus_estimate)
+
+    #===============
+    # PLOT FINAL FIT
+    #===============
+    unique_m0 = sorted(set(m0vals))
+    palette = sns.color_palette('tab10', n_colors = len(unique_m0))
+    color_map = {m0: palette[i] for i, m0 in enumerate(unique_m0)}
+    seen_m0 = set()
+
+    fig = plt.figure(figsize=(10, 7))
+    ax1 = fig.add_subplot(111)
+    for i in range(len(x_data)):
+        x = x_data[i]
+        y = y_data[i]
+        m0 = m0vals[i]
+        color = color_map[m0]
+
+        data_label = f'{m0}' if m0 not in seen_m0 else None
+        seen_m0.add(m0)
+
+        y_fit = model_analytical(x, m0vals[i], params_fit)
+        ax1.plot(x, y_fit, color=color, linewidth=2)
+        ax1.scatter(x, y, s=35, color=color, alpha=0.7, linewidth=0, label=data_label)
+    plt.xlabel('Time (h)', fontsize=15)
+    plt.ylabel('Normalised fibril mass', fontsize=15)
+    plt.legend()
+    plt.show()
 
 
 
