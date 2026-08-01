@@ -122,8 +122,22 @@ def mean_residual_error(y_actual_list, y_model_list):
 
 sys.path.append('/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-fits')
 from richards import load_data     # my trusted function
+
+
+# use for old pH 6 data:
 data_path = '/Users/nataliaionescu/Desktop/AB42_project/normalized-data/pH_6_proper_norm.tsv'
 case = 'pH_6_old'
+
+# use for old pH 6.5 data:
+#data_path = '/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-fits/ph_6.5_no_1.4_no_1.1.tsv'
+#case = 'pH_6.5_old'
+
+# use for new pH 6.5 data:
+#data_path = '/Users/nataliaionescu/Desktop/AB42_project/normalized-data/pH_6.5_june.tsv'
+#case = 'pH_6.5_new'
+
+
+
 x_data, y_data, m0vals = load_data(data_path)
 
 if case == 'pH_6_old':
@@ -136,6 +150,27 @@ if case == 'pH_6_old':
     x_data = [x for x, k in zip(x_data, keep) if k]
     y_data = [y for y, k in zip(y_data, keep) if k]
     m0vals = m0vals[keep]
+
+elif case == 'pH_6.5_new':
+    mask = m0vals != 1.25
+    x_data = [x for x, m0 in zip(x_data, m0vals) if m0 != 1.25]
+    y_data = [y for y, m0 in zip(y_data, m0vals) if m0 != 1.25]
+    m0vals = m0vals[mask]
+    drop_idx = np.where(m0vals == 1.75)[0][0]
+    keep = np.arange(len(m0vals)) != drop_idx
+    x_data = [x for x, k in zip(x_data, keep) if k]
+    y_data = [y for y, k in zip(y_data, keep) if k]
+    m0vals = m0vals[keep]
+    drop_idx = np.where(m0vals == 2.5)[0][2]
+    keep = np.arange(len(m0vals)) != drop_idx
+    x_data = [x for x, k in zip(x_data, keep) if k]
+    y_data = [y for y, k in zip(y_data, keep) if k]
+    m0vals = m0vals[keep]
+
+elif case == 'pH_6.5_old':
+    pass     # file is already cleaned up
+
+
 
 #===================
 # MAIN TWO-STAGE FIT
