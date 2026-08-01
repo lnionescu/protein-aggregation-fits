@@ -94,24 +94,90 @@ def load_data(data_path):
 
 
 if __name__ == "__main__":
-    #data_path = '/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-fits/pH6_without_a_1.4_curve_.tsv' 
-    #data_path = '/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-fits/ph_6.5_no_1.4_no_1.1.tsv' 
-    #data_path = '/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-fits/pH_6_normalized.tsv' 
-    data_path = '/Users/nataliaionescu/Desktop/AB42_project/normalized-data/pH_6_proper_norm.tsv' 
-    x_data, y_data, m0vals = load_data(data_path)
-   
-    # filter out the m0=0.8 curves since they overlap a lot with the m0=1.1 curves and the optimizer gets confused
-    mask = m0vals != 0.8
-    x_data = [x for x, m in zip(x_data, m0vals) if m != 0.8]
-    y_data = [y for y, m in zip(y_data, m0vals) if m != 0.8]
-    m0vals = m0vals[mask]
+    # load data
 
-    # also filter out the third m0=1.4 curve because it annoys me how it overlaps with the 1.1 one
-    drop_idx = np.where(m0vals == 1.4)[0][2]
-    keep = np.arange(len(m0vals)) != drop_idx
-    x_data = [x for x, k in zip(x_data, keep) if k]
-    y_data = [y for y, k in zip(y_data, keep) if k]
-    m0vals = m0vals[keep]
+    # use for old pH 6 data:
+    #data_path = '/Users/nataliaionescu/Desktop/AB42_project/normalized-data/pH_6_proper_norm.tsv'
+    #case = 'pH_6_old'
+
+    # use for old pH 6.5 data:
+    #data_path = '/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-fits/ph_6.5_no_1.4_no_1.1.tsv'
+    #case = 'pH_6.5_old'
+
+    # use for new pH 6.5 data:
+    #data_path = '/Users/nataliaionescu/Desktop/AB42_project/normalized-data/pH_6.5_june.tsv'
+    #case = 'pH_6.5_new'
+
+    # use for new pH 6 data:
+    data_path = '/Users/nataliaionescu/Desktop/AB42_project/normalized-data/pH_6_june_shorter_plateau.tsv'
+    case = 'pH_6_new'
+
+    import seaborn as sns
+    x_data, y_data, m0vals = load_data(data_path)
+
+    # remove m0=0.8 curves, remove the third m0=1.4 curve due to high overlap with other m0 curves for old pH 6 data
+    if case == 'pH_6_old':
+        mask = m0vals != 0.8
+        x_data = [x for x, m0 in zip(x_data, m0vals) if m0 != 0.8]
+        y_data = [y for y, m0 in zip(y_data, m0vals) if m0 != 0.8]
+        m0vals = m0vals[mask]
+        drop_idx = np.where(m0vals == 1.4)[0][2]
+        keep = np.arange(len(m0vals)) != drop_idx
+        x_data = [x for x, k in zip(x_data, keep) if k]
+        y_data = [y for y, k in zip(y_data, keep) if k]
+        m0vals = m0vals[keep]
+
+    # for the new pH 6.5 data, remove all m0=1.25 curves, as well as the first m0=1.75 curve, as well as the third m0=2.5 curve
+    elif case == 'pH_6.5_new':  
+        mask = m0vals != 1.25
+        x_data = [x for x, m0 in zip(x_data, m0vals) if m0 != 1.25]
+        y_data = [y for y, m0 in zip(y_data, m0vals) if m0 != 1.25]
+        m0vals = m0vals[mask]
+        drop_idx = np.where(m0vals == 1.75)[0][0]
+        keep = np.arange(len(m0vals)) != drop_idx
+        x_data = [x for x, k in zip(x_data, keep) if k]
+        y_data = [y for y, k in zip(y_data, keep) if k]
+        m0vals = m0vals[keep]
+
+        # try removing all m0=2.5 curves
+        #mask = m0vals != 2.5
+        #x_data = [x for x, m0 in zip(x_data, m0vals) if m0 != 2.5]
+        #y_data = [y for y, m0 in zip(y_data, m0vals) if m0 != 2.5]
+        #m0vals = m0vals[mask]
+
+        drop_idx = np.where(m0vals == 2.5)[0][2]
+        keep = np.arange(len(m0vals)) != drop_idx
+        x_data = [x for x, k in zip(x_data, keep) if k]
+        y_data = [y for y, k in zip(y_data, keep) if k]
+        m0vals = m0vals[keep]
+
+    # for the new pH 6 data, drop: second m0=5 curve; second m0=3.8 curve; second m0=1.75 curve; remove third m0=1.25 curve
+    # remove also all m0=1.25 curves
+    elif case == 'pH_6_new':
+        drop_idx = np.where(m0vals == 5)[0][1]
+        keep = np.arange(len(m0vals)) != drop_idx
+        x_data = [x for x, k in zip(x_data, keep) if k]
+        y_data = [y for y, k in zip(y_data, keep) if k]
+        m0vals = m0vals[keep]
+        drop_idx = np.where(m0vals == 3.8)[0][1]
+        keep = np.arange(len(m0vals)) != drop_idx
+        x_data = [x for x, k in zip(x_data, keep) if k]
+        y_data = [y for y, k in zip(y_data, keep) if k]
+        m0vals = m0vals[keep]
+        drop_idx = np.where(m0vals == 1.75)[0][1]
+        keep = np.arange(len(m0vals)) != drop_idx
+        x_data = [x for x, k in zip(x_data, keep) if k]
+        y_data = [y for y, k in zip(y_data, keep) if k]
+        m0vals = m0vals[keep]
+
+        mask = m0vals != 1.25
+        x_data = [x for x, m0 in zip(x_data, m0vals) if m0 != 1.25]
+        y_data = [y for y, m0 in zip(y_data, m0vals) if m0 != 1.25]
+        m0vals = m0vals[mask]
+
+       
+
+        print('kept m0vals:', m0vals)
 
     
 
