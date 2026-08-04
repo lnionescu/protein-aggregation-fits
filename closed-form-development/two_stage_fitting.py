@@ -125,16 +125,16 @@ from richards import load_data     # my trusted function
 
 
 # use for old pH 6 data:
-data_path = '/Users/nataliaionescu/Desktop/AB42_project/normalized-data/pH_6_proper_norm.tsv'
-case = 'pH_6_old'
+#data_path = '/Users/nataliaionescu/Desktop/AB42_project/normalized-data/pH_6_proper_norm.tsv'
+#case = 'pH_6_old'
 
 # use for old pH 6.5 data:
 #data_path = '/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-fits/ph_6.5_no_1.4_no_1.1.tsv'
 #case = 'pH_6.5_old'
 
 # use for new pH 6.5 data:
-#data_path = '/Users/nataliaionescu/Desktop/AB42_project/normalized-data/pH_6.5_june.tsv'
-#case = 'pH_6.5_new'
+data_path = '/Users/nataliaionescu/Desktop/AB42_project/normalized-data/pH_6.5_june.tsv'
+case = 'pH_6.5_new'
 
 
 
@@ -170,14 +170,14 @@ elif case == 'pH_6.5_new':
 elif case == 'pH_6.5_old':
     pass     # file is already cleaned up
 
-
+print('currently fitting: ', case)
 
 #===================
 # MAIN TWO-STAGE FIT
 #==================
 if __name__ == '__main__':
     # parameters that are fixed throughout both stages of the fit
-    fixed_params_common = {'n': 100, 'nk': 100, 'kp': 1, 'm_star': 2.5, 'n2': 0, 'nc': 2}
+    fixed_params_common = {'n': 100, 'nk': 100, 'kp': 1, 'm_star': 4, 'nc': 2, 'n2': 0}
 
     #================================================
     # FIT K1, K2 ON EARLY-TIME DATA ONLY, C = 1 FIXED
@@ -194,8 +194,10 @@ if __name__ == '__main__':
     fitted_early = {name: init_guesses_early[i] * np.exp(res_early.x[i]) for i, name in enumerate(free_params_early)}
     k1_fit = fitted_early['k1']
     k2_fit = fitted_early['k2']
+    #n2_fit = fitted_early['n2']
     print('early time fitted k1: ', k1_fit)
     print('early time fitted k2: ', k2_fit)
+    #print('early time fitted n2: ', n2_fit)
 
     #===============================================================
     # FIT KO_MINUS ON THE FULL DATA, WITH K1 AND K2 FIXED FROM ABOVE
