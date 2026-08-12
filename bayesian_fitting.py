@@ -9,6 +9,7 @@ import pytensor.tensor as pt
 import scipy.stats
 
 import arviz as az   # visualization for bayesian inference
+print(hasattr(az, 'plot_posterior'))
 
 from scipy.optimize import brentq   # for initial condition explicit solution
 
@@ -39,7 +40,7 @@ if case == 'pH_6_old':
 
 
 def qss_free_monomer(m0_val, m_star_val, nk_val, n_val):
-    if m0_val <= m_star_val:
+    if m0_val.all() <= m_star_val:
         return m0_val
     prefactor = n_val * m_star_val ** (1 - nk_val)
     def f(m_free):
@@ -57,9 +58,9 @@ n2 = 0
 # ingredients 
 
 # analytical solution, this time using the pytensor package for pymc to be able to use it
-def model_analytical(t, m0, kn, k2, ko_minus):
+def model_analytical(t, m0,Omega, k1, k2, ko_minus):
     m_free_qss = qss_free_monomer(m0, m_star, nk, n)
-    Omega = m_free_qss / m0
+    #Omega = m_free_qss / m0
     kappa_val = pt.sqrt(2 * kp * m0 * k2 * m0 ** n2)
     eps_val = k1 * m0 ** nc / (2 * m0 * k2 * m0 **n2)
     lam = pt.sqrt(Omega ** (n2+1))
@@ -86,18 +87,36 @@ Omega_all = np.concatenate([np.full(len(x), Omega) for (x, Omega) in zip(x_data,
 with pm.Model() as model:
     # priors for unknown model parameters: k1, k2, ko_minus; basically assume they are normal distributions around the initial guess (where the initial guess is the same as in basinhopping)
     # for consistency with basinhopping, use logs of the actual parameters, but i'm not sure if this is justified or necessary
-    log_k1 = pm.Normal('log_k1', mu = np.log(1e-3), sigma=5)
-    log_k2 = pm.Normal('log_k2', mu=np.log(10), sigma=5)
-    log_ko = pm.Normal('log_ko', mu =np.log(3), sigma=5)
+    log_k1 = pm.Normal('log_k1', mu = np.log(1), sigma=5)
+    log_k2 = pm.Normal('log_k2', mu=np.log(1), sigma=5)
+    log_ko_minus = pm.Normal('log_ko_minus', mu =np.log(3), sigma=5)
 
     # record intermediate optimization results as deterministic variables
     k1 = pm.Deterministic('k1', pt.exp(log_k1))
     k2 = pm.Deterministic('k2', pt.exp(log_k2))
-    ko = pm.Deterministic('ko', pt.exp(log_ko))
+    ko_minus = pm.Deterministic('ko_minus', pt.exp(log_ko_minus))
+
+    # standard deviation of observed likelihood, half normal since it has to be positive
+    sigma_obs = pm.HalfNormal('sigma_obs', sigma=0.1)
+
+    # model prediction
+    y_pred = model_analytical(t_all, m0_all, Omega_all, k1, k2, ko_minus)
+
+    # observed likelihood
+    pm.Normal('obs', mu=y_pred, sigma=sigma_obs, observed=y_all)
+
+    # sampling parameter space
+    # draws is defaulted to 1000; tune: adjust step sizes/scalings during tuning
+    samples = pm.sample(draws=1000, tune=1000, chains=4, cores=1, random_seed=42, progressbar=True)
+    # TODO maybe specify the method and add a target_accept later?
+
+summary = az.summary(samples, var_names=['k1', 'k2', 'ko_minus', 'sigma_obs'])
+print(summary)
 
 
-
-
+# posterior plots
+plots = az.plot_dist(samples, var_names=['k1', 'k2', 'ko_minus'], backend='matplotlib')
+plots.show()
 
 
 
