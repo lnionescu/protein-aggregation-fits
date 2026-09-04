@@ -1,12 +1,15 @@
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
+import scienceplots
+plt.style.use(['science', 'no-latex'])
 import pymc as pm   # the python package for bayesian inference
 
 # pymc models translate to pytensor graphs, whatever that means
 import pytensor
 import pytensor.tensor as pt
 import scipy.stats
+from scipy.stats import gaussian_kde
 
 import arviz as az   # visualization for bayesian inference
 print(hasattr(az, 'plot_posterior'))
@@ -19,9 +22,14 @@ sys.path.append('/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-
 from richards import load_data
 
 # load and clean data
+
 # use for old pH 6 data:
 data_path = '/Users/nataliaionescu/Desktop/AB42_project/normalized-data/pH_6_proper_norm.tsv'
 case = 'pH_6_old'
+
+# use for old pH 6.5 data:
+#data_path = '/Users/nataliaionescu/Desktop/AB42_project/protein-aggregation-fits/ph_6.5_no_1.4_no_1.1.tsv'
+#case = 'pH_6.5_old'
 
 x_data, y_data, m0vals = load_data(data_path)
 
@@ -49,6 +57,7 @@ def qss_free_monomer(m0_val, m_star_val, nk_val, n_val):
 
 # constants (for pH 6 !!!!)
 m_star = 2.5
+#m_star = 4   # for pH 6.5
 n = 100
 nk = 100
 kp = 1
@@ -59,7 +68,7 @@ n2 = 0
 
 # analytical solution, this time using the pytensor package for pymc to be able to use it
 def model_analytical(t, m0,Omega, k1, k2, ko_minus):
-    m_free_qss = qss_free_monomer(m0, m_star, nk, n)
+    #m_free_qss = qss_free_monomer(m0, m_star, nk, n)
     #Omega = m_free_qss / m0
     kappa_val = pt.sqrt(2 * kp * m0 * k2 * m0 ** n2)
     eps_val = k1 * m0 ** nc / (2 * m0 * k2 * m0 **n2)
@@ -115,8 +124,83 @@ print(summary)
 
 
 # posterior plots
-plots = az.plot_dist(samples, var_names=['k1', 'k2', 'ko_minus'], backend='matplotlib')
-plots.show()
+#plots = az.plot_dist(samples, var_names=['k1', 'k2', 'ko_minus'], backend='matplotlib')
+#plots.show()
+
+# check correlations between parameters
+#fig, ax = plt.subplots()
+#log_k1_samples = samples.posterior['log_k1'].values.flatten()
+#log_k2_samples = samples.posterior['log_k2'].values.flatten()
+#ax.scatter(log_k1_samples, log_k2_samples)
+#plt.tight_layout()
+#plt.show()
+
+# posterior plots made with matplotlib
+from scipy.stats import gaussian_kde
+
+k1_samples = samples.posterior['k1'].values.flatten()
+k2_samples = samples.posterior['k2'].values.flatten()
+ko_samples = samples.posterior['ko_minus'].values.flatten()
+
+fig, axes = plt.subplots(1, 3, figsize=(7.2, 2.3))
+
+# k1 spans many orders of magnitude
+log_k1 = np.log10(k1_samples[k1_samples > 0])
+kde = gaussian_kde(log_k1)
+xs = np.linspace(log_k1.min(), log_k1.max(), 300)
+axes[0].plot(xs, kde(xs))
+axes[0].fill_between(xs, kde(xs), alpha=0.2)
+axes[0].set_xlabel(r'$\log_{10}(k_1)$')
+axes[0].set_title(r'$k_1$')
+
+for ax, vals, title in zip(axes[1:], [k2_samples, ko_samples],
+                           [r'$k_2$', r'$k_{o,-}$']):
+    kde = gaussian_kde(vals)
+    xs = np.linspace(vals.min(), vals.max(), 300)
+    ax.plot(xs, kde(xs))
+    ax.fill_between(xs, kde(xs), alpha=0.2)
+    ax.set_xlabel(title)
+    ax.set_title(title)
+
+for ax in axes:
+    ax.set_yticks([])
+    ax.set_ylabel('Density')
+
+plt.tight_layout()
+plt.show()
+
+# joint posterior of k1 vs k2
+fig, ax = plt.subplots(figsize=(3.4, 3))
+counts, xedges, yedges = np.histogram2d(np.log10(k1_samples), np.log10(k2_samples), bins=40)
+im = ax.imshow(counts.T, origin='lower', aspect='auto', cmap='Blues',
+               extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]])
+ax.set_xlabel(r'$\log_{10}(k_1)$')
+ax.set_ylabel(r'$\log_{10}(k_2)$')
+fig.colorbar(im, ax=ax, label='density')
+plt.tight_layout()
+plt.show()
+
+# joint posterior of k1 and ko_minus
+fig, ax = plt.subplots(figsize=(3.4, 3))
+counts, xedges, yedges = np.histogram2d(np.log10(k1_samples), ko_samples, bins=40)
+im = ax.imshow(counts.T, origin='lower', aspect='auto', cmap='Blues',
+               extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]])
+ax.set_xlabel(r'$\log_{10}(k_1)$')
+ax.set_ylabel(r'$k_{o,-}$')
+fig.colorbar(im, ax=ax, label='density')
+plt.tight_layout()
+plt.show()
+
+
+
+
+
+
+# checking fit quality for a parameter combination within the error bounds of the Bayesian sampler
+
+
+
+
 
 
 
