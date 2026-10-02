@@ -196,7 +196,60 @@ plt.show()
 
 
 
-# checking fit quality for a parameter combination within the error bounds of the Bayesian sampler
+# plotting fits
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# ---- posterior draws (thinned) -------------------------------------------
+k1_s = samples.posterior['k1'].values.flatten()
+k2_s = samples.posterior['k2'].values.flatten()
+ko_s = samples.posterior['ko_minus'].values.flatten()
+
+rng = np.random.default_rng(0)
+idx = rng.choice(len(k2_s), size=400, replace=False)   # 400 is plenty
+k1_s, k2_s, ko_s = k1_s[idx], k2_s[idx], ko_s[idx]
+
+# ---- fixed quantities (old pH 6.5 data) ----------------------------------
+kp, nc, n2 = 1.0, 2.0, 0.0
+#m_star, nk, n = 4.0, 100.0, 100.0
+m_star, nk, n = 2.5, 100.0, 100.0    # for pH 6
+
+
+def curves_for_m0(t, m0):
+    """Return (n_draws, len(t)) array of model curves."""
+    Omega = qss_free_monomer(m0, m_star, nk, n) / m0      # same for all draws
+    kappa = np.sqrt(2 * kp * m0 * k2_s * m0**n2)[:, None]
+    eps   = (k1_s * m0**nc / (2 * m0 * k2_s * m0**n2))[:, None]
+    lam   = np.sqrt(Omega**(n2 + 1))
+    c     = (ko_s[:, None] / kappa) / lam
+    arg   = np.clip(lam * kappa * t[None, :], 0, 500)
+    return 1 - (1 + 2 * eps * Omega**(nc - n2) / c * (np.cosh(arg) - 1))**(-c)
+
+# ---- plot ----------------------------------------------------------------
+unique_m0 = sorted(set(m0vals))
+palette = sns.color_palette('tab10', n_colors=len(unique_m0))
+color_map = {m0: palette[i] for i, m0 in enumerate(unique_m0)}
+seen = set()
+
+fig, ax = plt.subplots(figsize=(10, 7))
+for x, y, m0 in zip(x_data, y_data, m0vals):
+    color = color_map[m0]
+    t_fine = np.linspace(x.min(), x.max(), 300)
+    band = curves_for_m0(t_fine, m0)
+    lo, med, hi = np.percentile(band, [2.5, 50, 97.5], axis=0)
+
+    ax.fill_between(t_fine, lo, hi, color=color, alpha=0.3, linewidth=0)
+    ax.plot(t_fine, med, color=color, linewidth=2)
+    ax.scatter(x, y, s=35, color=color, alpha=0.7, linewidth=0,
+               label=f'{m0}' if m0 not in seen else None)
+    seen.add(m0)
+
+ax.set_xlabel('Time (h)', fontsize=15)
+ax.set_ylabel('Normalised fibril mass', fontsize=15)
+ax.legend()
+plt.tight_layout()
+plt.show()
 
 
 
