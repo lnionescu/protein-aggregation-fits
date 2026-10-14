@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 from scipy.optimize import basinhopping, brentq
 from dataclasses import dataclass
+import scienceplots
+plt.style.use(['science', 'no-latex'])
 
 # dimensional params
 m0 = 5
@@ -143,8 +145,8 @@ valid = M_num/m0 < 0.2   # early times
 plt.plot(tau[valid], M_num[valid]/m0, 'r--', label='numerical')
 plt.plot(tau[valid], M_early[valid], 'b--', label='analytical')
 plt.legend()
-plt.xlabel('tau')
-plt.ylabel('M(tau)/m0')
+plt.xlabel(r'$\tau$')
+plt.ylabel(r'$M(\tau)/m_0$')
 plt.title("Early time normalized fibril mass")
 plt.show()
 
@@ -273,9 +275,9 @@ if __name__ == '__main__':
         m0vals = m0vals[keep]
 
     # free and fixed params
-    free_params = ['k2', 'ko_minus']
-    initial_guesses = [1, 1]
-    fixed_params = {'n': 100, 'nk': 100, 'kp': 1, 'm_star': 2.5, 'n2': 0, 'nc': 2, 'k1': 1e-3}
+    free_params = ['k2', 'ko_minus', 'm_star', 'k1']
+    initial_guesses = [1, 1, 3, 1]
+    fixed_params = {'n': 100, 'nk': 100, 'kp': 1,  'n2': 0, 'nc': 2}
 
     seed = 42
     res = basinhopping(
@@ -330,11 +332,11 @@ if __name__ == '__main__':
 
 # checking k1 identifiability issue
 
-k1_scan = np.logspace(-6, 6, 30)   # push well past your previous floor
+k1_scan = np.logspace(-6, 6, 30)   
 residuals = []
 for k1_fixed in k1_scan:
     best = np.inf
-    for seed in [1, 2, 3]:                      # multiple seeds/restarts
+    for seed in [1, 2, 3]:                      # multiple seeds
         free_params = ['k2', 'ko_minus']
         initial_guesses = [0.1, 1]
         fixed_params = {'n': 100, 'nk': 100, 'kp': 1, 'm_star': 2.5,
@@ -346,7 +348,9 @@ for k1_fixed in k1_scan:
         best = min(best, res.fun)
     residuals.append(best)
 
-plt.semilogx(k1_scan, residuals)
-plt.xlabel('Fixed k1 value')
-plt.ylabel('Residual')
+fig, ax = plt.subplots(figsize=(3.4,2.8))
+ax.semilogx(k1_scan, residuals)
+ax.set_xlabel(r'Fixed $k_n$ value')
+ax.set_ylabel('Residual')
+plt.tight_layout()
 plt.show()
